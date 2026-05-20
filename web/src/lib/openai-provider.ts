@@ -265,7 +265,7 @@ export class OpenAIProvider implements AIProvider {
       clustersTxt ? `Spatial cluster candidates (strong suggestions):\n${clustersTxt}` : "",
     ].filter(Boolean).join("\n");
 
-    const ctxPreamble = context ? renderContextPrompt(context) : "";
+    const ctxPreamble = context ? renderContextPrompt(context, "grouping") : "";
     const systemMsg = ctxPreamble ? `${SEMANTIC_SYSTEM}\n\n${ctxPreamble}` : SEMANTIC_SYSTEM;
 
     const res = await c.chat.completions.create({
@@ -431,7 +431,7 @@ Return JSON conforming to the schema. Coordinates in target-canvas pixels.`;
     ];
     if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
 
-    const ctxPreamble = args.context ? renderContextPrompt(args.context) : "";
+    const ctxPreamble = args.context ? renderContextPrompt(args.context, "resize") : "";
     const sysMsg = ctxPreamble ? `${RELAYOUT_SYSTEM}\n\n${ctxPreamble}` : RELAYOUT_SYSTEM;
 
     const res = await c.chat.completions.create({
@@ -522,7 +522,7 @@ Return JSON with the full new HTML.`;
     ];
     if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
 
-    const ctxPreamble = args.context ? renderContextPrompt(args.context) : "";
+    const ctxPreamble = args.context ? renderContextPrompt(args.context, "resize") : "";
     const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
 
     const res = await c.chat.completions.create({
@@ -604,7 +604,7 @@ ${args.algorithmHtml}
 
 Return JSON with the full new HTML at native ${args.psd.width}×${args.psd.height} dimensions.`;
 
-    const ctxPreamble = args.context ? renderContextPrompt(args.context) : "";
+    const ctxPreamble = args.context ? renderContextPrompt(args.context, "sourceEngine") : "";
     const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
 
     const res = await c.chat.completions.create({
@@ -662,7 +662,7 @@ ${args.brief ? `Brief: ${args.brief}` : ""}` },
       ];
       if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
 
-      const ctxPreamble = args.context ? renderContextPrompt(args.context) : "";
+      const ctxPreamble = args.context ? renderContextPrompt(args.context, "verify") : "";
       const sysMsg = ctxPreamble ? `${VERIFY_SYSTEM}\n\n${ctxPreamble}` : VERIFY_SYSTEM;
 
       const res = await c.chat.completions.create({

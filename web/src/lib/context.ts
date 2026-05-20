@@ -1,20 +1,32 @@
 import { prisma } from "./db";
 
+export type Stage =
+  | "grouping"        // semantic pass
+  | "sourceEngine"    // AI source HTML/CSS engine
+  | "resize"          // AI Responsive + AI Rewrite
+  | "verify";         // vision critique
+
 export interface OrgContext {
+  // Brand identity — always-on
   brandName?: string | null;
   voice?: string | null;
   audience?: string | null;
   doRules?: string | null;
   dontRules?: string | null;
   freeform?: string | null;
+  // Stage-specific
+  groupingContext?: string | null;
+  sourceEngineContext?: string | null;
+  resizeContext?: string | null;
+  verifyContext?: string | null;
 }
 
 export interface LayeredContext {
-  /** Level 3: organisation context — applies to every render */
+  /** Level 3: org-wide context */
   org: OrgContext | null;
-  /** Level 2: accumulated learnings for this specific PSD */
+  /** Level 2: per-PSD persistent notes */
   iterationNotes: string | null;
-  /** Level 1: the brief for this specific task (designer nudge, etc.) */
+  /** Level 1: this-render-only brief */
   taskBrief: string | null;
 }
 
@@ -24,50 +36,82 @@ export async function loadLayeredContext(psdId: string | null, taskBrief: string
     psdId ? prisma.psd.findUnique({ where: { id: psdId }, select: { iterationNotes: true } }) : Promise.resolve(null),
   ]);
   return {
-    org: org && hasAny(org) ? { brandName: org.brandName, voice: org.voice, audience: org.audience, doRules: org.doRules, dontRules: org.dontRules, freeform: org.freeform } : null,
+    org: org && orgHasAny(org) ? {
+      brandName: org.brandName,
+      voice: org.voice,
+      audience: org.audience,
+      doRules: org.doRules,
+      dontRules: org.dontRules,
+      freeform: org.freeform,
+      groupingContext: org.groupingContext,
+      sourceEngineContext: org.sourceEngineContext,
+      resizeContext: org.resizeContext,
+      verifyContext: org.verifyContext,
+    } : null,
     iterationNotes: psd?.iterationNotes ?? null,
     taskBrief: taskBrief ?? null,
   };
 }
 
-function hasAny(o: OrgContext): boolean {
-  return !!(o.brandName || o.voice || o.audience || o.doRules || o.dontRules || o.freeform);
+function orgHasAny(o: OrgContext): boolean {
+  return !!(
+    o.brandName || o.voice || o.audience || o.doRules || o.dontRules || o.freeform ||
+    o.groupingContext || o.sourceEngineContext || o.resizeContext || o.verifyContext
+  );
 }
 
+const STAGE_LABEL: Record<Stage, string> = {
+  grouping: "Semantic grouping rules",
+  sourceEngine: "AI source HTML/CSS preferences",
+  resize: "Resize / re-layout preferences",
+  verify: "Critique priorities",
+};
+
+const STAGE_FIELD: Record<Stage, keyof OrgContext> = {
+  grouping: "groupingContext",
+  sourceEngine: "sourceEngineContext",
+  resize: "resizeContext",
+  verify: "verifyContext",
+};
+
 /**
- * Render the layered context as a single prompt-block. Returns "" if nothing is set
- * so the resulting prompts stay clean for ad-hoc use without any context configured.
+ * Render the layered context prompt for a specific stage.
+ * - Brand identity (always)
+ * - Stage-specific block (only if this stage has one)
+ * - Project notes (L2)
+ * - Task brief (L1, highest priority)
  */
-export function renderContextPrompt(ctx: LayeredContext): string {
+export function renderContextPrompt(ctx: LayeredContext, stage: Stage): string {
   const sections: string[] = [];
 
   if (ctx.org) {
-    const lines: string[] = ["### Brand context (applies to every render)"];
-    if (ctx.org.brandName) lines.push(`Brand: ${ctx.org.brandName}`);
-    if (ctx.org.voice) lines.push(`Tone of voice / persona: ${ctx.org.voice}`);
-    if (ctx.org.audience) lines.push(`Target audience: ${ctx.org.audience}`);
-    if (ctx.org.doRules) lines.push(`Do's:\n${ctx.org.doRules}`);
-    if (ctx.org.dontRules) lines.push(`Don'ts:\n${ctx.org.dontRules}`);
-    if (ctx.org.freeform) lines.push(`Other notes:\n${ctx.org.freeform}`);
-    sections.push(lines.join("\n"));
+    const id: string[] = [];
+    if (ctx.org.brandName) id.push(`Brand: ${ctx.org.brandName}`);
+    if (ctx.org.voice) id.push(`Tone of voice / persona: ${ctx.org.voice}`);
+    if (ctx.org.audience) id.push(`Target audience: ${ctx.org.audience}`);
+    if (ctx.org.doRules) id.push(`Do's:\n${ctx.org.doRules}`);
+    if (ctx.org.dontRules) id.push(`Don'ts:\n${ctx.org.dontRules}`);
+    if (ctx.org.freeform) id.push(`Other notes:\n${ctx.org.freeform}`);
+    if (id.length) sections.push("### Brand identity (applies to every AI call)\n" + id.join("\n"));
+
+    const stageVal = ctx.org[STAGE_FIELD[stage]];
+    if (stageVal && typeof stageVal === "string" && stageVal.trim()) {
+      sections.push(`### ${STAGE_LABEL[stage]}\n${stageVal.trim()}`);
+    }
   }
 
   if (ctx.iterationNotes && ctx.iterationNotes.trim()) {
-    sections.push(
-      "### Project notes (learned from past renders of this PSD)\n" + ctx.iterationNotes.trim()
-    );
+    sections.push("### Project notes (learned from past renders of this PSD)\n" + ctx.iterationNotes.trim());
   }
 
   if (ctx.taskBrief && ctx.taskBrief.trim()) {
-    sections.push(
-      "### Designer brief for THIS render (highest priority — overrides above when in conflict)\n" + ctx.taskBrief.trim()
-    );
+    sections.push("### Designer brief for THIS render (highest priority — overrides above when in conflict)\n" + ctx.taskBrief.trim());
   }
 
   if (sections.length === 0) return "";
   return [
     "── CONTEXT ──",
-    "Apply the following layered context when designing this layout. Higher-priority layers (designer brief, then project notes, then brand context) override lower ones when they conflict.",
+    "Apply the layered context below. Higher-priority layers (designer brief → project notes → stage rules → brand identity) override lower ones when they conflict.",
     "",
     ...sections,
     "── END CONTEXT ──",
@@ -76,8 +120,7 @@ export function renderContextPrompt(ctx: LayeredContext): string {
 
 /**
  * Append a new auto-derived note to a PSD's iteration notes. Used after a
- * verify critique returns suggestions — we keep the most recent batch so the
- * next render benefits from them without ballooning the notes.
+ * verify critique returns suggestions.
  */
 export async function recordCritiqueLearning(psdId: string, suggestions: string[]): Promise<void> {
   if (suggestions.length === 0) return;
@@ -86,7 +129,6 @@ export async function recordCritiqueLearning(psdId: string, suggestions: string[
 
   const existing = (psd.iterationNotes ?? "").trim();
   const tag = "<!-- auto:critique -->";
-  // Keep one auto-derived block. Replace if it exists.
   const manualPart = existing.split(tag)[0].trim();
   const autoBlock = [
     tag,

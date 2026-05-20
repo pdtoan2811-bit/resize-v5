@@ -28,14 +28,27 @@ model Psd {
 }
 
 // Level 3: organization-wide context. Singleton row (id = "default").
+//
+// Split into "brand identity" (applies everywhere) and four stage-specific
+// blocks. Each stage block is injected ONLY into prompts for that stage,
+// keeping per-stage prompts tight without ballooning every AI call.
 model Organization {
   id        String   @id @default("default")
+
+  // Brand identity — always-on, prepended to every AI prompt
   brandName String?
-  voice     String?  // tone of voice, brand persona
-  audience  String?  // target audience description
-  doRules   String?  // markdown bullet list of do's
-  dontRules String?  // markdown bullet list of don'ts
-  freeform  String?  // anything else
+  voice     String?
+  audience  String?
+  doRules   String?
+  dontRules String?
+  freeform  String?
+
+  // Stage-specific context blocks
+  groupingContext     String?  // semantic grouping pass only
+  sourceEngineContext String?  // AI source HTML/CSS engine only
+  resizeContext       String?  // AI Responsive + AI Rewrite resize calls
+  verifyContext       String?  // vision critique only
+
   updatedAt DateTime @updatedAt
 }
 

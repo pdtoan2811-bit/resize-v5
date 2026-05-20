@@ -9,6 +9,7 @@ import { ResponsivePreview } from "@/components/responsive-preview";
 import { ProjectNotes } from "@/components/project-notes";
 import { ReSemanticButton } from "@/components/re-semantic-button";
 import { EngineChoice } from "@/components/engine-choice";
+import { ContextBar } from "@/components/context-bar";
 
 export default async function PsdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,6 +22,15 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
     },
   });
   if (!psd) notFound();
+
+  const org = await prisma.organization.findUnique({ where: { id: "default" } });
+  const ctxFlags = {
+    brand: !!(org?.brandName || org?.voice || org?.audience || org?.doRules || org?.dontRules || org?.freeform),
+    grouping: !!org?.groupingContext,
+    sourceEngine: !!org?.sourceEngineContext,
+    resize: !!org?.resizeContext,
+    verify: !!org?.verifyContext,
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -44,6 +54,8 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
             </div>
           </div>
         </header>
+
+        <ContextBar flags={ctxFlags} />
 
         <EngineChoice
           psdId={psd.id}
