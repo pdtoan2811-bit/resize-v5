@@ -1,40 +1,58 @@
-# PRD — AI-First PSD Resizer (Iteration 6)
+# PRD — AI-First PSD Resizer (v2 — built state)
 
 **Owner:** Thomas
-**Date:** 2026-05-20
-**Status:** Draft / R&D
+**Last updated:** 2026-05-20
+**Status:** Working prototype on GitHub at `pdtoan2811-bit/resize-v5`
+**Run:** `./start.command`
+
+---
+
+## 0. Changelog vs. v1
+
+The v1 PRD proposed **one** AI-driven flow (semantic pass → imagined reference → AI re-layout → render → verify). The implementation went further. This v2 documents the system as built.
+
+What changed:
+1. **Two source engines** — the PSD can be translated to source HTML deterministically (algorithm) **or** rewritten by AI from brand context.
+2. **Four resize modes**, not one — Naive, Group, AI Responsive, AI Rewrite — that you can select **as a multi-set** and compare side-by-side per target size.
+3. **Three-level context stack** — Organization (with five stage-specific blocks), per-PSD project notes, per-render task brief. Each block routes to the right AI prompt only.
+4. **Responsive output** — coords stored as %, `aspect-ratio` + `container-type: size`. Previews are pixel-perfect transform-scaled iframes at native target dimensions.
+5. **UX** — workspace shape is Source → Generate → Compare with a sticky source column. Reset / delete flows for clean iteration.
 
 ---
 
 ## 1. Problem
 
-Brands need to resize a single hero PSD key visual into many ad formats (square → portrait → wide banner → thin skyscraper, etc.). Existing tools (Smartly.io) work for *similar* aspect ratios but break catastrophically on aggressive aspect-ratio changes because they treat layers as geometric boxes, not semantic design elements.
+Brands need to resize a hero PSD key visual into many ad formats (square → portrait → wide banner → thin skyscraper). Existing tools (Smartly.io) work for *similar* aspect ratios but break catastrophically on aggressive aspect-ratio changes because they treat layers as geometric boxes, not semantic design elements.
 
 Real-world PSDs are messy:
 - Hand-drawn layers, weird sizes, unnamed shadow/effect/decorative layers
+- A logo and its background plate often sit as **two separate layers** that read as one element
 - Designers rely on aesthetic intuition that pure x/y/w/h math cannot reproduce
 
 Five prior iterations failed because the AI was asked to push raw layer coordinates around in bulk — it has no spatial grounding when reasoning over flat JSON of boxes.
 
-## 2. Hypothesis (this iteration)
+## 2. Hypothesis
 
 **Treat the PSD as an HTML/CSS document. Let the AI redesign the layout the way a web designer would re-flow a page.**
 
-HTML/CSS is the AI's native habitat: flexbox, grid, absolute positioning, responsive breakpoints. Asking it to "make this layout work at 300×600 instead of 1080×1080" inside HTML/CSS gives it a representation it can actually reason about, instead of a list of opaque rectangles.
+HTML/CSS is the AI's native habitat: flexbox, grid, absolute positioning, container queries. Asking it to make a layout work at 300×600 instead of 1080×1080 inside HTML/CSS gives it a representation it can actually reason about.
 
-Then we render the modified HTML/CSS back to a flattened image (or back-map to PSD layers).
+Two refinements added in v2:
+- **Coordinates are emitted as percentages**, the canvas uses `aspect-ratio` + `container-type: size`. The same HTML scales fluidly within a ratio family without re-rendering.
+- The **semantic grouping** is treated as the system's contract with the AI — every AI call sees the same group inventory, so groups can move as atomic units.
 
 ## 3. Goals / Non-Goals
 
 **Goals**
-- AI-first resizing across drastically different aspect ratios
-- Semantic grouping & naming of layers, **cached per PSD** (cost + speed)
+- Resize across drastically different aspect ratios with brand-aware aesthetic outcomes
+- Multiple resize strategies (cheap algorithmic → expensive AI rewrite) interchangeable per render and comparable side-by-side
+- Semantic grouping that survives messy designer layers (unnamed plates, baked shadows, hand-drawn decoration)
 - Cheap, fast R&D loop using small OpenAI models where possible
-- Designer can preview, accept, or nudge the result
+- Per-organisation context that doesn't have to be retyped per PSD or per render
 
-**Non-Goals (for this iteration)**
-- Round-trip back to editable PSD (export to PNG/JPG is enough for v1)
-- Animation / video formats
+**Non-Goals (this iteration)**
+- Round-trip back to editable PSD (PNG/JPG export is enough)
+- Animation / video / Lottie
 - Multi-user collaboration, accounts, billing
 - Pixel-perfect parity with the original — *aesthetic* parity is the bar
 
@@ -42,16 +60,41 @@ Then we render the modified HTML/CSS back to a flattened image (or back-map to P
 
 Performance marketers & creative ops at brands who already use PSD-based key visuals and currently rely on Smartly.io or manual designer hours to resize.
 
-## 5. Core Flow
+## 5. Core Flow (as built)
 
-1. **Upload PSD** → parse layers (psd.js / ag-psd in browser, or psd-tools in Python worker)
-2. **Semantic pass (cached)** → AI labels and groups layers (logo, headline, subhead, product, model/subject, background, decoration, shadow/effect). Cache keyed by PSD content hash.
-3. **HTML/CSS transform** → emit a structured HTML doc where each semantic group is a positioned element with the layer's rendered PNG as its visual. Original square layout is the "source of truth" stylesheet.
-4. **Target reference imagination** → for each target size, GPT Image 2 generates a low-fi aesthetic reference at the target ratio, conditioned on the flattened source + brief.
-5. **AI re-layout** → small/fast model rewrites the HTML/CSS for the target viewport, using the imagined reference as an aesthetic anchor and the semantic group inventory as the parts list.
-6. **Render** → headless Chromium screenshots the HTML at the target size → PNG/JPG.
-7. **Verify loop** → vision model compares render vs. imagined reference + checks legibility, overlap, safe margins. If fail → up to N retries with critique fed back.
-8. **Designer review** → side-by-side gallery; accept / regenerate / nudge with text.
+```
+                       /settings (Brand context)  ←─── always-on
+                                  │
+                                  ▼
+1. Upload PSD ──► 2. Parse + raster layers (Python / psd-tools)
+                                  │
+                                  ▼
+                  3. Semantic pass (heuristic clustering + AI grouping)
+                          ─ cached on disk + DB
+                                  │
+                                  ▼
+                  4. Choose source engine:
+                       ┌── algorithm (deterministic emit)
+                       └── ai HTML/CSS (AI authors using brand context)
+                                  │
+                                  ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │ Resize studio — pick MODES × SIZES                      │
+   │                                                         │
+   │ Modes: [Naive] [Group] [AI Responsive] [AI Rewrite]     │
+   │ Sizes: [1:1] [4:5] [9:16] [16:9] [300×600] [728×90] …   │
+   │ Task brief: free-form text for this run                 │
+   │                                                         │
+   │ For each (mode × size):                                 │
+   │   imagine ref (AI modes only) ──► layout JSON / HTML    │
+   │       ──► Playwright render ──► Tier-1 verify ──►       │
+   │       Tier-2 critique ──► retry up to 3 ──► best wins   │
+   └─────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+              5. Comparison gallery — by-size, all modes side-by-side
+                       with per-row zoom (fit / 25 / 50 / 100 %)
+```
 
 ## 6. Why HTML/CSS Beats Raw Coordinates
 
@@ -63,489 +106,351 @@ Performance marketers & creative ops at brands who already use PSD-based key vis
 | Hard to express "headline above product" | Trivial in DOM order + CSS |
 | No standard to copy from | Trained on billions of responsive pages |
 
-## 7. Caching Strategy (critical for cost)
+---
 
-**Cache key:** `sha256(psd_bytes)`
+# Part 2 · Architecture (as built)
 
-**Cached artifacts per PSD:**
-- Parsed layer tree + each layer rendered as transparent PNG
-- Semantic labels + groupings (the expensive AI pass)
-- Source HTML/CSS at native size
-- Flattened preview PNG
-- Per-layer embedding (optional, for similarity nudges)
+## 7. Source engines
 
-**Cache miss only on:** new PSD upload. Every subsequent resize for that PSD reuses everything above and only pays for the per-target re-layout call + image gen + render.
+The PSD has one "source" HTML representation that everything else builds on. Two ways to produce it:
 
-Storage: local filesystem (dev) → S3-compatible (later). Index in SQLite/Postgres.
+### 7a. Algorithm engine (default)
 
-## 8. Tech Stack (simple, R&D-friendly)
+A pure function `emitHtml(psd, semantic) → { html, css }`. Same bytes in → byte-identical output. Each layer is an `<img>` of its rasterized PNG, positioned with CSS variables in **percentages of the canvas**. The canvas uses `aspect-ratio: W / H; container-type: size; width:100%; height:100%`.
 
-**Frontend**
-- Next.js 15 App Router, React 19, TypeScript
-- Tailwind + **shadcn/ui**, **light mode only**
-- Canvas preview via plain `<img>` + CSS; no Konva/Fabric needed in v1
-- File upload via dropzone
+- **Free**, instant, exact
+- Default after upload — use as a baseline
+- See §10a
 
-**Backend**
-- Next.js Route Handlers for thin API
-- Python worker (FastAPI) for PSD parsing — `psd-tools` is the most reliable
-- Headless rendering: Playwright (Chromium) — screenshot the generated HTML
-- Queue: lightweight — start with in-process; upgrade to BullMQ/Redis only if needed
+### 7b. AI HTML/CSS engine
 
-**AI**
-- **GPT-4.1-mini / GPT-5-mini** for semantic labeling, HTML/CSS rewriting, verification critique (cheap, fast)
-- **GPT-4.1** only for the final re-layout if mini struggles on a target
-- **GPT Image 2** for aesthetic reference generation per target ratio
-- **gpt-4.1-mini vision** for the verify-loop critique
+`generateSourceHtml(psd, semantic, brandContext)` — the AI rewrites the source HTML as a clean modern document (semantic tags, flex/grid, container queries) using the brand identity + the **AI HTML/CSS** stage context. Output is sanitized through an allowlist (no scripts, no external resources, only the PSD's own layer asset URLs).
 
-**Storage**
-- SQLite + local FS for R&D
-- Prisma ORM (so swap to Postgres is one env var later)
+- **~$0.04 per PSD**, generated once, cached on disk
+- AI Rewrite mode (§8.4) automatically reads from this version when active
+- Algorithm version is always recoverable
 
-**No** Redis, no Kafka, no microservices, no auth provider, no Docker compose sprawl in v1.
+Both versions are served by the same endpoint `GET /api/psd/[id]/source.html`. Engine choice persists on `Psd.sourceEngine`.
 
-## 9. Data Model (minimal)
+## 8. Resize modes (multi-select)
+
+The four modes share the same input (parsed layers + semantic groups + target W/H) and the same render pipeline (apply layout → Playwright screenshot → Tier-1 verify). They differ in how the layout is produced.
+
+### 8.1 Naive — proportional rescale
+
+`autoLayout = empty groups[]` → `applyLayout` falls back to per-layer proportional rescale. Each layer scales by `canvasRatio`. No grouping, no AI. **Baseline / control.**
+
+- Cost: **free** · Latency: **instant** · No retries
+
+### 8.2 Group — algorithmic anchor
+
+`autoLayout(psd, semantic, w, h)` ([src/lib/auto-layout.ts](web/src/lib/auto-layout.ts)) — semantic groups are atomic units placed by role-driven anchors: logo → top-left, headline → top safe band, CTA → bottom safe band, product/subject → centered max-area fit, optional groups (decoration/shadow/texture) hidden when target area < 50 % of source. **No AI per resize.**
+
+- Cost: **free** · Latency: **instant** · No retries
+
+### 8.3 AI Responsive — AI moves groups
+
+`provider.reLayout()` returns a structured `ReLayoutResult` of per-group transforms; the server converts pixels → % at apply time so one HTML scales fluidly inside a ratio family. AI never authors raw CSS — it emits JSON the server validates and applies. See §10c.
+
+- Cost: ~**$0.02 / size** · Latency: ~10 s · Up to 3 retries with critique-driven `mustFix`
+
+### 8.4 AI Rewrite — AI authors HTML
+
+`provider.rewriteHtml()` takes the active source HTML (algorithm or AI) and rewrites the entire document for the target. Free use of flex/grid/transform/gradients. Sanitized to the same asset allowlist. See §10c.
+
+- Cost: ~**$0.05 / size** · Latency: ~30 s · Up to 3 retries
+
+### Comparison gallery
+
+Renders are grouped by target size. Each row shows every mode you've generated for that size, **fixed display height**, side-by-side. Per-row zoom toggle (fit / 25 / 50 / 100 %) for inspecting at native target resolution.
+
+## 9. Context stack (three levels, stage-routed)
+
+The biggest UX surface in v2. Each AI call receives a layered preamble.
 
 ```
-Psd       id, hash, filename, width, height, createdAt
-Layer     id, psdId, name, x, y, w, h, z, pngPath, kind
-Group     id, psdId, label, semanticRole, layerIds[]
-Render    id, psdId, targetW, targetH, html, css, pngPath, status, score
-ImagineRef id, psdId, targetW, targetH, prompt, pngPath
+┌─────────────────────────────────────────────────────────────────────┐
+│  L3 · Organization (singleton row, /settings)                       │
+│      ├── Brand identity ── prepended to every AI call               │
+│      ├── Grouping ──────── semanticPass only                        │
+│      ├── HTML engine ──── generateSourceHtml only                   │
+│      ├── Resize ────────── reLayout + rewriteHtml only              │
+│      └── Verify ────────── verifyCritique only                      │
+│                                                                     │
+│  L2 · Project notes (per PSD)                                       │
+│      Hand-written + auto-collected critique suggestions             │
+│                                                                     │
+│  L1 · Task brief (per render)                                       │
+│      Highest priority, overrides L2 + L3 on conflict                │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## 10. AI Prompts (sketch)
+`renderContextPrompt(ctx, stage)` ([src/lib/context.ts](web/src/lib/context.ts)) assembles the preamble — brand identity always present, the stage's specific block only if the stage matches, then L2 + L1.
 
-**Semantic pass** — see §10b.
+This split keeps each prompt focused: the resize prompt never sees grouping-specific guidance, the critique prompt never sees CSS preferences, etc.
 
-### 10b. Semantic Pass + Cache (the expensive step, run once per PSD)
+### Auto-learning loop
 
-**Goal:** turn a messy bag of layers into a tidy inventory of *semantic groups* the re-layout AI can reason about. This is the single most expensive AI call in the pipeline, so it's aggressively cached.
+After every AI render returning critique suggestions, `recordCritiqueLearning(psdId, suggestions)` merges them into L2 under a `<!-- auto:critique -->` marker. The next render starts smarter without the user lifting a finger. Manual L2 content above the marker is preserved.
 
-**Role taxonomy (closed set, v1)**
+## 10. Engineering specs (kept from v1, updated)
 
-| Role | Description | Importance default |
-|---|---|---|
-| `logo` | Brand mark / wordmark | primary |
-| `headline` | Main message text | primary |
-| `subhead` | Secondary text | secondary |
-| `cta` | Button or call-to-action text | primary |
-| `product` | The thing being sold | primary |
-| `subject` | Model, person, mascot, hero illustration | primary |
-| `background` | Full-canvas backdrop (photo, gradient, solid) | structural |
-| `decoration` | Confetti, sparkles, dots, arbitrary shapes | optional |
-| `shadow_effect` | Drop shadows, glows, reflections rendered as separate layers | optional |
-| `texture` | Noise, grain, paper texture overlays | optional |
-| `frame` | Borders, badges, ribbons, sale tags | secondary |
-| `disclaimer` | Legal / fine print | secondary |
+### 10a. Algorithm emit (deterministic, %)
 
-**Importance tiers** (drives what the re-layout AI may hide or shrink):
-- `primary` — must remain visible & legible at every target size
-- `secondary` — may shrink, may move below the fold of a banner, must not be hidden
-- `structural` — must remain (e.g., background)
-- `optional` — may be hidden when space-constrained
+**Goal:** pure function `emitHtml(psd, semantic) → {html, css}` that produces byte-identical output for identical inputs. The re-layout AI edits values within this structure; if emit is unstable, the AI's edits stop being meaningful.
 
-**Input to the model**
+**Document shape**
 
-- A contact-sheet PNG: grid of every layer's thumbnail (max 256px each), labeled with `lid`, original layer name, bbox, and a tiny crop preview of where it sits on the full canvas.
-- The flattened source PNG at ≤1024px wide, for global context.
-- The PSD's native size and layer count.
+```html
+<!doctype html>
+<html data-emit-version="1" data-w="1080" data-h="1080">
+  <body>
+    <div class="kv-wrap">
+      <div class="kv" style="--ratio:1080 / 1080;--bg:#fff">
+        <div class="group" data-gid="g1" data-role="background" data-importance="structural">
+          <img class="layer" data-lid="l0" data-fit="cover"
+               src="/api/asset/<hash>/l0.png"
+               style="--xp:0%;--yp:0%;--wp:100%;--hp:100%;
+                      --z:0;--op:1;--rot:0deg;--bm:normal" />
+        </div>
+        …
+      </div>
+    </div>
+  </body>
+</html>
+```
 
-We pass the contact sheet as one multimodal image rather than N image attachments — much cheaper and the model can compare layers spatially.
+**Key v2 changes from the original spec**
 
-**Output schema (strict JSON)**
+| v1 | v2 |
+|---|---|
+| `--x:120; --y:340; --w:540; --h:540` in pixels | `--xp:11.11%; --yp:31.48%; --wp:50%; --hp:50%` |
+| `.kv { width: var(--w)*1px; height: var(--h)*1px; }` | `.kv { aspect-ratio:var(--ratio); width:100%; height:100%; container-type:size }` |
+| Single resolution | Same HTML reflows fluidly inside its ratio family |
+| Background as raster `<img>` | `data-fit="cover"` on the background layer |
+
+**Per-layer mapping** — same as v1 except text/vector/smartObject are pre-rasterised by the Python worker and embedded as `<img>`. Adjustment layers are baked into the flattened preview only (not per-layer PNG) — known limitation.
+
+**Determinism guarantees**
+- Same PSD bytes → byte-identical HTML/CSS (sorted keys, stable ids `l<i>` / `g<i>`, no timestamps)
+- Layer PNG filenames are content-hashed → cache hits cross-session
+- Emit versioned via `data-emit-version`; bumping invalidates render caches but **not** the semantic cache
+
+**Allowed AI edits** (Mode 8.3)
+- CSS-variable values on `.layer` and `.kv` background
+- `hidden` attr on `optional`-importance groups
+- DOM order of `.group` elements
+
+**Forbidden**
+- `data-lid` / `data-gid` / `data-role` / `data-importance` — semantic identity
+- `src` of any `<img>` — no swapping assets
+- `--bm` (blend mode) — visual identity
+
+### 10b. Semantic grouping (v2 — clustering-aware)
+
+The expensive AI step, **cached aggressively** per PSD content hash.
+
+**Heuristic pre-pass** ([src/lib/heuristics.ts](web/src/lib/heuristics.ts)) — runs in Node before the AI call. Spatial clustering via union-find detects:
+
+- **Logo + plate behind it** — bottom layer is named "plate / bg / panel / chip / pill" or larger and z-adjacent, while a smaller layer above sits mostly inside it
+- **Text + baked shadow/glow/stroke** — top layer name matches `shadow|glow|reflection|outline|stroke|fx|shade|blur|highlight` and its bbox overlaps the layer beneath
+- **Unnamed shadow plates** — z-adjacent layer whose centroid is inside a smaller layer above, area within 4× ratio
+
+These clusters are passed to the AI as **strong suggestions**, and used directly by the offline `StubAIProvider` for fully-offline operation.
+
+**AI semantic pass** — multimodal call with the flattened source PNG + the heuristic clusters + the **Grouping** stage context. JSON-schema output:
 
 ```json
 {
   "groups": [
-    {
-      "gid": "g1",
-      "role": "headline",
-      "label": "Summer Sale headline",
-      "importance": "primary",
-      "layerIds": ["l4", "l5"],
-      "rationale": "Two layers — text + its baked stroke — read as one semantic unit",
-      "anchorHint": "top-left"
-    }
+    { "gid": "g1", "role": "headline", "label": "Opening celebration headline",
+      "importance": "primary", "layerIds": ["l4", "l5"],
+      "anchorHint": "top",
+      "rationale": "Two text layers form one stacked headline" }
   ],
   "unassigned": ["l22"],
   "notes": "l22 looks like a stray scratch layer"
 }
 ```
 
-- Every non-hidden layer must appear in exactly one group **or** in `unassigned`. Validated; failure → one retry with the error message, then fall back to "each layer is its own group" + flag for designer review.
-- `anchorHint` ∈ `top-left | top | top-right | left | center | right | bottom-left | bottom | bottom-right | full`. Used as a soft prior by the re-layout AI.
-- `label` is human-readable, used in the UI's group tree.
+**Role taxonomy** (12 values) — `logo | headline | subhead | cta | product | subject | background | decoration | shadow_effect | texture | frame | disclaimer`. Closed set; importance defaults from role.
 
-**Heuristic pre-pass (deterministic, before AI)**
+**Re-analyse** (new in v2) — `POST /api/psd/[id]/resemantic` re-runs the pass, overwrites the cache, replaces `Group` DB rows, **wipes every Render row + its files + the imagined references** (they referenced stale gids). Manual L2 notes survive.
 
-Runs in the Python worker to cheapen the AI call:
-- Detect background: any layer whose opaque bbox ≥ 90% of canvas and z-index is lowest → tentatively `background`.
-- Detect shadow/effect: layer whose name matches `/shadow|glow|reflection|fx/i` **or** whose pixels are ≥95% single-hue low-saturation and sit directly under another layer → tentatively `shadow_effect`.
-- Detect texture: layer with `mix-blend-mode` ≠ normal and covering ≥70% of canvas → tentatively `texture`.
-- Cluster spatially-overlapping layers with similar centroid into candidate groups.
+### 10c. Re-layout prompts
 
-These hints are passed to the AI as *suggestions*, not commitments. The AI can override.
+Both AI resize modes share a structured output contract.
 
-**Cache**
+**AI Responsive** ([openai-provider.ts `reLayout`](web/src/lib/openai-provider.ts)) returns JSON conforming to a strict `ReLayoutResult` schema: `canvas: { w,h,background }, groups: [{ gid, hidden?, transform: {x,y,w,h,rot,scale}, layerOverrides[] }], domOrder, reasoning, hiddenJustified`. Server validates gid existence + applies the layout deterministically; AI never writes raw CSS.
 
-- **Key:** `sha256(psd_bytes) || ":" || semantic_prompt_version`
-- **Value:** the JSON above + the contact-sheet PNG + per-layer PNGs + heuristic pre-pass output
-- **Invalidation:** bumping `semantic_prompt_version` (when we improve the prompt) invalidates; uploading a new PSD with different bytes is a new key by definition
-- **Designer override:** when the designer renames a group or moves a layer between groups in the UI, we **don't** re-run the AI. We patch the cached JSON in place and bump a `userEdits` counter. The patched JSON is what downstream steps see. This means designer corrections are free.
-- **Re-run trigger:** explicit "Re-analyze" button in UI (rare; for when the AI got it badly wrong and designer doesn't want to hand-fix).
+**AI Rewrite** ([openai-provider.ts `rewriteHtml`](web/src/lib/openai-provider.ts)) returns `{ html, reasoning }`. HTML is sanitized via [sanitize-html.ts](web/src/lib/sanitize-html.ts) — strips `<script>`, external `<link rel=stylesheet>`, event handlers, javascript: URLs, off-asset `<img src>`, off-asset `url()`.
 
-**Cost target:** one semantic pass < $0.02 with gpt-4.1-mini vision. Every resize after that pays $0 for this step.
+Both prompts receive: source flattened PNG + (imagined target reference if generated) + semantic inventory (`gid`/`role`/`importance`/`anchorHint`) + designer brief + previous-attempt `mustFix` (on retries).
 
-**HTML emit** — deterministic; not an AI call. See §10a below for the full spec.
+### 10d. Verify loop
 
-### 10a. PSD → HTML/CSS Emit Rules (deterministic)
+**Tier 1 — programmatic** ([src/lib/verify.ts](web/src/lib/verify.ts)) — bounds / safe-area / overlap / legibility-floor / background-coverage / hidden-primary. No AI call. If it fails, skip Tier-2 and feed the structured issues into the next retry's `mustFix`.
 
-This step is **not** an AI call. It is a pure function `emitHtml(psd, groups) → {html, css}`. Determinism matters because the re-layout AI edits this output; if emit is unstable, the AI's edits stop being meaningful.
-
-**Document shape**
-
-```html
-<!doctype html>
-<html data-w="1080" data-h="1080">
-  <body>
-    <div class="kv" style="--w:1080;--h:1080">
-      <div class="bg" data-role="background">…</div>
-      <div class="group" data-role="product" data-importance="primary" data-gid="g3">
-        <img class="layer" data-lid="l17" src="/cache/<hash>/l17.png"
-             style="--x:120;--y:340;--w:540;--h:540;--z:5;--op:1;--rot:0;
-                    --bm:normal" />
-        …
-      </div>
-      …
-    </div>
-  </body>
-</html>
-```
-
-CSS uses CSS variables so the re-layout AI can rewrite *values* without rewriting structure:
-
-```css
-.kv { position:relative; width:calc(var(--w)*1px); height:calc(var(--h)*1px); background:#fff; }
-.group { position:absolute; inset:0; }                       /* groups span the canvas; children are positioned */
-.layer {
-  position:absolute;
-  left:  calc(var(--x)*1px);
-  top:   calc(var(--y)*1px);
-  width: calc(var(--w)*1px);
-  height:calc(var(--h)*1px);
-  z-index: var(--z);
-  opacity: var(--op);
-  transform: rotate(calc(var(--rot)*1deg));
-  mix-blend-mode: var(--bm);
-}
-```
-
-**Per-layer mapping**
-
-| PSD concept | HTML/CSS treatment |
-|---|---|
-| Raster layer | `<img>` of the layer's transparent PNG (pre-rasterized by Python worker) |
-| Text layer | **Rasterized to PNG in v1.** No live `<p>` / web fonts. Avoids font-substitution drift. Original text stored in `data-text` for future. |
-| Smart object | Flattened to PNG at its rendered resolution |
-| Vector shape | Rasterized to PNG at 2× for crispness |
-| Adjustment layer (curves, hue/sat, etc.) | **Dropped in v1.** Their effect is baked into the flattened preview but not into individual layer PNGs. Tracked as risk. |
-| Clipping mask | Apply mask in the worker, export the already-clipped PNG |
-| Vector / raster layer mask | Same — bake into the PNG |
-| Layer effects (drop shadow, outer glow, stroke) | Baked into the PNG with sufficient padding (see "bbox padding") |
-| Blend mode | Mapped to `mix-blend-mode` when supported (`multiply`, `screen`, `overlay`, `darken`, `lighten`, `color-dodge`, `color-burn`, `hard-light`, `soft-light`, `difference`, `exclusion`, `hue`, `saturation`, `color`, `luminosity`). Unsupported modes (`linear-dodge`, `vivid-light`, etc.) → fallback to `normal` and flag in `data-bm-original`. |
-| Opacity / fill | Combined into `--op` (0–1). If layer has effects with independent fill, bake into PNG. |
-| Group / folder | Becomes a semantic `<div class="group">` only if the semantic pass assigns it a role; otherwise its children are flattened to the parent semantic group. PSD folder structure is *not* preserved 1:1. |
-| Hidden layer | Skipped entirely |
-| Locked layer | Treated normally; lock flag stored in `data-locked` so re-layout AI may avoid moving it |
-
-**Bbox & padding**
-
-- Each layer PNG is exported at its **effects-inclusive bounding box** (shadow/glow extends the bbox). `x,y` are the top-left of that bbox in canvas coords — not the layer's logical position.
-- Worker stores both `effectsBbox` and `contentBbox` (tight crop of opaque pixels) so the re-layout AI can reason about visual vs. hit-area extents.
-- All coords are **integer pixels at native PSD resolution**. No subpixel.
-
-**Z-order**
-
-- `--z` is the PSD stacking index (0 = bottom). Re-layout AI may reorder *within* a group but must not cross the `background` ↔ `subject` ↔ `foreground/text` band without an explicit reason logged in its response.
-
-**Group → div rules**
-
-- One `<div class="group">` per semantic group from §10's semantic pass.
-- Groups are ordered in the DOM by ascending min-`--z` of their layers (painter's order). Re-layout AI may reorder DOM but the renderer relies on `--z` for actual stacking; DOM order is a hint for the AI's reasoning.
-- A group's children retain their relative offsets so the group reads as one composable unit. The re-layout AI typically moves the *group* (by adjusting all child `--x/--y` by a delta, or by wrapping in a transform) rather than individual layers.
-
-**Background special-case**
-
-- If the semantic pass tags a layer/group as `background`, emit it with `inset:0; width:100%; height:100%` and `object-fit:cover` on its `<img>`. This lets the AI resize the canvas without leaving white edges.
-- If background is a solid color or simple gradient (detected by the worker via histogram), emit as CSS `background` on `.kv` instead of an `<img>` — cheaper and cleaner to re-flow.
-
-**Safe areas**
-
-- Emit `data-safe-top/right/bottom/left` on `.kv` (default 4% of min dimension). Re-layout AI must keep `logo`, `headline`, `cta` groups inside the safe area at the target size.
-
-**Fonts (v1 policy)**
-
-- All text rasterized. No `@font-face`. No live text editing.
-- Original font name, size, tracking, leading, color are stored in `data-text-meta` on the group for future iterations (live-text mode, font-substitution mode).
-
-**Determinism guarantees**
-
-- Same PSD bytes → byte-identical HTML and CSS output (sorted keys, stable ids `l<layerIndex>` / `g<groupIndex>`, no timestamps, no random ids).
-- Layer PNG filenames are content-hashed so cache hits work cross-session.
-- Emit is versioned: `data-emit-version="1"` on `<html>`. Bumping the version invalidates rendered caches but **not** the semantic cache.
-
-**What the re-layout AI is allowed to change**
-
-- Any CSS variable on `.kv` (`--w`, `--h`) and on `.layer` (`--x`, `--y`, `--w`, `--h`, `--rot`, `--op`)
-- `.kv` background color/gradient
-- DOM order of `.group` elements
-- Add `hidden` attribute to a `.group` (only `decoration` or `shadow_effect` roles, unless explicitly justified)
-- Wrap a `.group` in an extra positioning div if needed (rare; flagged in response)
-
-**What the AI must not change**
-
-- `data-lid`, `data-gid`, `data-role`, `data-importance`
-- `src` of any `<img>` (no swapping assets)
-- `--bm` (blend mode) — visual identity
-- `data-emit-version`
-
-**Re-layout** — see §10c.
-
-### 10c. Re-layout Prompt Spec
-
-The hot path. Called once per (PSD, target size) — and possibly retried by the verify loop. Cost discipline is critical: this is the only step that scales with the number of target sizes.
-
-**Inputs** (multimodal, single call)
-
-1. **System prompt** — role, hard constraints, output contract (constant, cached server-side as a string).
-2. **Source HTML+CSS** (the §10a emit) — full text.
-3. **Group inventory JSON** — the §10b output, trimmed to `{gid, role, importance, anchorHint, contentBbox, effectsBbox}` per group.
-4. **Source flattened PNG** (≤1024 wide).
-5. **Imagined reference PNG** for this target ratio (≤1024 wide).
-6. **Target size** — `{w, h, name, safeArea}`.
-7. **Optional designer nudge** — free text + optional reference image.
-8. **Optional critique** — from the previous verify-loop failure (see §10d).
-
-**Output (strict JSON, not raw CSS)**
+**Tier 2 — vision critique** — multimodal call with the rendered PNG + imagined reference + source flat + semantic inventory + the **Verify** stage context. Outputs:
 
 ```json
 {
-  "canvas": { "w": 300, "h": 600, "background": "#F5E9D6" },
-  "groups": [
-    {
-      "gid": "g3",
-      "hidden": false,
-      "transform": { "x": 20, "y": 380, "w": 260, "h": 200, "rot": 0, "scale": 0.62 },
-      "layerOverrides": [
-        { "lid": "l17", "x": 0, "y": 0, "w": 260, "h": 200, "op": 1 }
-      ]
-    }
-  ],
-  "domOrder": ["g0", "g2", "g3", "g1"],
-  "reasoning": "Banner is tall+narrow. Stacked headline on top, product mid, CTA bottom. Hid g5 decoration — no room.",
-  "hiddenJustified": { "g5": "decoration, insufficient vertical space" }
+  "score": 0.78,
+  "rubric": { "hierarchy": …, "legibility": …, "balance": …, "fidelity": …, "aesthetic": … },
+  "issues": [{ "gid": "g4", "kind": "too_close_to_edge", "detail": "right edge" }],
+  "suggestions": ["Move g4 left by ~16px", …]
 }
 ```
 
-- The server applies this to the §10a emit deterministically. **The AI does not write raw CSS.** This kills a whole class of failures (typos, broken selectors, units, calc errors) and lets us validate structurally.
-- `transform.scale` is a convenience: applied uniformly to the group's children if `layerOverrides` is empty.
-- Coords are in target-canvas pixels. Server validates: every group fits in canvas (warn if not), primary groups inside `safeArea`, no `hidden:true` on primary/structural roles without explicit override flag.
+**Pass rule:** Tier-1 clean **and** score ≥ 0.7 **and** legibility rubric ≥ 0.5. Borderline (0.6–0.7) ships with a "flagged" badge.
 
-**Hard constraints (in system prompt)**
+**Retry policy:** 3 attempts max. Attempt 1 mini @ temp 0.4; attempt 2 mini @ temp 0.1 + critique; attempt 3 escalates to the big model + full critique history. Best score wins.
 
-- You may only reference `gid`s and `lid`s that exist in the input. Inventing ids → reject + retry.
-- `primary` groups must be fully inside the safe area.
-- `primary` and `structural` groups may not be hidden.
-- `secondary` may be hidden only if the designer's nudge explicitly allows.
-- `optional` may be hidden freely; explain in `hiddenJustified`.
-- Do not change blend modes, asset srcs, or roles.
-- `logo`, `headline`, and `cta` must be at least N pixels tall (N = `max(14, 0.04 * min(w,h))`) to ensure legibility.
-- Preserve relative ordering of `background` < everything else < `frame`/`disclaimer` unless you justify in `reasoning`.
+**Critique → constraint translation:** `issues` become structured `mustFix` items appended to the next call's prompt. `suggestions` get rolled into L2 project notes for the next *generation*, not just the next attempt.
 
-**Soft guidance**
+---
 
-- The imagined reference is an **aesthetic anchor**, not a ground truth. Match its composition energy (where mass sits, breathing room, focal hierarchy) — not its pixels.
-- Use `anchorHint` from the inventory as the prior for each group's placement when the target ratio differs sharply from source.
-- Prefer scaling groups uniformly to squashing them. If a group must change aspect, prefer cropping via container, not stretching.
+# Part 3 · Tech stack & data model
 
-**Model selection**
+## 11. Tech stack
 
-- Default: `gpt-4.1-mini` (or current "mini" equivalent).
-- Auto-escalate to `gpt-4.1` if:
-  - Target ratio differs from source by > 2× in either axis, **or**
-  - Verify loop failed twice with `gpt-4.1-mini`.
-- Cap escalations per resize.
+**Frontend**
+- Next.js 16 (App Router, Turbopack), React 19, TypeScript
+- Tailwind 4 + shadcn/ui, **light mode only**
+- `transform: scale()` previews — iframes render at native target dimensions, scaled by CSS
 
-**Token economy**
+**Backend**
+- Next.js route handlers (no separate API server)
+- Python FastAPI worker (`psd-tools` + Pillow) for PSD parse + per-layer raster
+- Playwright (Chromium) for HTML → PNG screenshotting
+- Queue: in-process, sequential per request
 
-- Source HTML can be large with many layers. Strip the `<img src>` paths to bare `l<id>` references in the prompt copy (the AI doesn't need the URLs; the server reconstructs them). Roughly halves token count on layer-heavy PSDs.
-- Inventory JSON is sent compact (no whitespace).
-- Reference images at 1024 wide max; auto-resize.
+**Persistence**
+- Prisma 7 with `@prisma/adapter-better-sqlite3` (zero-config local dev)
+- File cache at `.cache/psd/<hash>/{layers,imagine}/`, `.cache/renders/<psdId>/`
 
-**Failure modes & handling**
+**AI**
+- **gpt-5.4-mini** for semantic / re-layout / verify / rewriteHtml / generateSourceHtml (configurable via `OPENAI_MODEL_TEXT`)
+- **gpt-image-2-2026-04-21** for aesthetic reference generation via `images.edit` conditioned on the flattened source (configurable via `OPENAI_MODEL_IMAGE`)
+- `AI_PROVIDER=stub` runs fully offline — heuristic semantic clustering + deterministic algorithm modes only
 
-| Failure | Handling |
+## 12. Data model (Prisma)
+
+```prisma
+Psd            id, hash, filename, w, h, createdAt,
+               iterationNotes,           -- L2 context
+               sourceEngine (algorithm|ai),
+               sourceAiReason
+Layer          psdId, lid, name, x,y,w,h,z, opacity, bm, pngPath, kind
+Group          psdId, gid, role, label, importance, layerIds[], anchorHint, rationale
+Render         psdId, mode, targetW, targetH, presetName, layoutJson,
+               htmlPath, pngPath, status, score, rubricJson, reasoning,
+               attempts, latencyMs, costUsd
+               @@unique(psdId, mode, targetW, targetH)
+ImagineRef     psdId, targetW, targetH, prompt, pngPath
+Organization   id="default", brandName, voice, audience, doRules, dontRules, freeform,
+               groupingContext, sourceEngineContext, resizeContext, verifyContext
+```
+
+## 13. API surface
+
+| Endpoint | Purpose |
 |---|---|
-| Invalid JSON | One repair retry with parser error appended |
-| Unknown gid/lid | Reject, retry with diff of valid ids |
-| Primary group outside safe area | Auto-nudge into safe area if shift < 8% of canvas; else send back as critique |
-| Hidden primary | Hard reject, retry |
-| All groups overlap > 80% | Treat as a layout collapse; retry with stricter prompt + smaller temperature |
+| `POST /api/upload` | Upload PSD; parse + heuristics + semantic pass; cache |
+| `GET /api/asset/[hash]/[file]` | Serve layer PNGs / flattened previews |
+| `GET /api/psd/[id]/source.html` | Serve active source engine's HTML |
+| `POST /api/psd/[id]/source-engine` | Switch source engine; AI option generates and caches |
+| `POST /api/psd/[id]/resemantic` | Re-run semantic pass; invalidate Renders + imagined refs |
+| `POST /api/psd/[id]/resize` | Body: `mode` + `targets[]` + optional `nudge`. Runs full pipeline per (mode × target) |
+| `PUT /api/psd/[id]/notes` | Update L2 project notes |
+| `DELETE /api/psd/[id]` | Delete one PSD + its caches |
+| `GET /api/render/[psdId]/[file]` | Serve rendered HTML / PNG |
+| `GET / PUT /api/org-context` | L3 org context (10 fields) |
+| `POST /api/admin/reset` | Wipe every PSD + caches; brand context kept |
 
-**Determinism**
+---
 
-- `temperature: 0.4` default. Set to `0.1` on retries to converge.
-- `seed` derived from `(psdHash, targetW, targetH, attemptN)` so retries are reproducible during eval.
+# Part 4 · UX
 
-**Verify** — see §10d.
+## 14. Workspace shape (PSD detail page)
 
-### 10d. Verify Loop
+Reasoning: every new feature in v1 added another Card. The result was 9 cards stacked vertically with no hierarchy. v2 reshapes the page to match the user's actual job: **Source → Generate → Compare.**
 
-The safety net. A small vision model audits each render before it ships to the gallery, and feeds structured critique back into §10c on failure.
-
-**Two-tier verification**
-
-**Tier 1 — Programmatic checks (no AI call, runs first)**
-
-Fast, cheap, catches obvious breakage:
-
-- **Bounds:** every primary group's rendered bbox fully inside canvas and inside safe area.
-- **Overlap:** primary groups overlap each other by ≤ 15% of the smaller group's area. (`background` and `texture` exempt.)
-- **Legibility floor:** `logo`, `headline`, `cta` rendered height ≥ legibility minimum.
-- **Coverage:** background covers 100% of canvas (no white edges).
-- **Off-canvas:** no visible group's centroid is outside the canvas.
-- **Empty render:** rendered PNG isn't blank / single-color (entropy check).
-
-If Tier 1 fails, skip the AI call — generate a synthetic critique from the failing checks and go straight to retry.
-
-**Tier 2 — Vision-model critique**
-
-Only if Tier 1 passes. Cheap model (mini), one call.
-
-Inputs:
-- The rendered PNG at target size
-- The imagined reference PNG for this target
-- The source flattened PNG (for brand recognition)
-- Group inventory (compact)
-- Designer brief / nudge if any
-
-Output schema:
-
-```json
-{
-  "pass": false,
-  "score": 0.62,
-  "rubric": {
-    "hierarchy":   { "score": 0.7, "note": "Headline reads first, good." },
-    "legibility":  { "score": 0.4, "note": "CTA text is squeezed against the right edge." },
-    "balance":     { "score": 0.6, "note": "Heavy bottom; top feels empty." },
-    "fidelity":    { "score": 0.8, "note": "Brand identity preserved." },
-    "aesthetic":   { "score": 0.5, "note": "Less polished than reference." }
-  },
-  "issues": [
-    { "gid": "g4", "kind": "too_close_to_edge", "side": "right", "severityPx": 12 },
-    { "gid": "g2", "kind": "feels_floating", "suggestion": "anchor to headline baseline" }
-  ],
-  "suggestions": [
-    "Move g4 left by ~16px",
-    "Increase g1 size by 10% to fill top breathing room"
-  ]
-}
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ ← All PSDs                  Context · 3/5    Delete · start over    │
+│ filename.psd                       1080×1080 · 12 layers · 5 groups │
+├──────────────────────┬──────────────────────────────────────────────┤
+│ SOURCE (sticky 340)  │ GENERATE                                     │
+│  [live preview]      │   Pick mode(s) × size(s)…                    │
+│                      │   [Naive][Group][AI Resp.][AI Rewrite]       │
+│  Source engine       │   Sizes: [1:1][9:16][16:9][728×90] …         │
+│  Algorithm · switch ▸│   Task brief …                               │
+│                      │   [Generate · 12 renders]                    │
+│  ─ Semantic groups + │                                              │
+│  ─ Project notes   + │ ─────────────────────────────────────────── │
+│                      │  COMPARE · by size                           │
+│                      │   1080×1350           [fit/25/50/100]        │
+│                      │   [Naive][Group][AI R.][AI W.]               │
+│                      │   …                                          │
+└──────────────────────┴──────────────────────────────────────────────┘
 ```
 
-**Pass rule**
+Engine choice and re-analyse, which were full-width cards in v1, are now **inline controls** inside the Source card. Semantic groups and Project notes are **collapsibles**, closed by default. The top context bar (5 stage chips) compresses to a single `Context · N/5` link in the toolbar.
 
-- `pass = true` iff Tier 1 clean **and** `score ≥ 0.7` **and** no `legibility` rubric < 0.5.
-- Borderline: `0.6 ≤ score < 0.7` → ship but flag in UI with "needs review" badge.
-- Below 0.6 → retry.
+## 15. Context surfaces
 
-**Retry policy**
+| # | Where | Scope · Stage | Action |
+|---|---|---|---|
+| 1 | `/settings` → Brand identity tab | L3 · brand | Brand name, voice, audience, do/don'ts |
+| 2 | `/settings` → Grouping tab | L3 · grouping | Cluster rules, naming conventions |
+| 3 | `/settings` → HTML engine tab | L3 · sourceEngine | Layout / type / styling preferences |
+| 4 | `/settings` → Resize tab | L3 · resize | Ratio-change rules, what to hide |
+| 5 | `/settings` → Verify tab | L3 · verify | Critique scoring priorities |
+| 6 | PSD toolbar → `Context · N/5` | L3 status | Read-only deep-link |
+| 7 | PSD source card → `Project notes` disclosure | L2 | Per-PSD hand notes + auto critique |
+| 8 | PSD source card → inline engine switcher | reads L3 · sourceEngine | Trigger AI engine generation |
+| 9 | PSD source card → Re-analyze button | reads L3 · grouping | Re-run semantic pass |
+| 10 | Studio → Task brief textarea | L1 | This-render-only brief |
 
-- Max 3 total attempts per (PSD, target size).
-- Attempt 1: `gpt-4.1-mini`, temp 0.4.
-- Attempt 2: same model, temp 0.1, critique appended.
-- Attempt 3: escalate to `gpt-4.1`, temp 0.1, full critique history.
-- After 3 fails: ship the highest-scored attempt and mark "best effort" in the UI.
+## 16. Reset / iteration touchpoints
 
-**Critique → constraint translation**
+| # | Where | Action |
+|---|---|---|
+| 1 | PSD toolbar → `Delete · start over` | Wipes this PSD + caches; back to home |
+| 2 | Home header → `Clear all · start fresh` | Wipes every PSD + caches; brand context kept |
+| 3 | Source card → `Re-analyze` (in Groups disclosure) | Re-runs semantic pass; clears Renders + imagined refs for this PSD |
+| 4 | Source card → engine switcher | Switching invalidates AI Rewrite renders only |
 
-The raw critique is not fed back as prose. The server translates `issues[]` into structured constraints appended to the next §10c prompt:
+---
 
-```json
-{
-  "previousAttempt": { "score": 0.62 },
-  "mustFix": [
-    { "gid": "g4", "constraint": "rightEdgeGte", "value": 16 },
-    { "gid": "g2", "constraint": "attachBelow", "ref": "g1", "gap": 8 }
-  ],
-  "freeAdvice": ["Increase g1 size by 10% to fill top breathing room"]
-}
+# Part 5 · R&D evaluation
+
+## 17. Success metrics
+
+- ≥ 70 % of generated sizes accepted without nudging on the 10-PSD eval set
+- ≥ 85 % with one nudge
+- Average cost per resize < $0.05 after semantic cache hit
+- Average time per resize < 20 s end-to-end
+- Naive mode produces visibly worse outputs in ≥ 70 % of sizes vs. Group mode (sanity check that grouping matters)
+
+## 18. Known limitations
+
+- Adjustment layers (curves, hue/sat) are baked into the flattened preview but **not** into per-layer PNGs — visible if you isolate a layer in a non-trivial blend stack
+- Live text editing not supported; all text rasterised
+- No bring-your-own font / font-substitution intelligence in AI Rewrite
+- One-shot HTML rewrite per target — no multi-pass progressive refinement beyond the 3-retry critique loop
+- `gpt-image-2` reference can ignore the supplied source image; rate-limited under heavy use
+
+## 19. Run
+
+```sh
+./start.command          # macOS — installs missing deps, runs migrations,
+                         # starts worker (:8787) + web (:3000), opens browser
+
+# manual
+cd worker && uv run uvicorn app:app --host 127.0.0.1 --port 8787
+cd web    && pnpm install && pnpm dlx prisma migrate dev && pnpm dev
 ```
 
-Structured `mustFix` items are also re-checked in Tier 1 of the next attempt — closes the loop deterministically.
-
-**Cost ceiling per resize**
-
-- 1 semantic pass (amortized: ~$0 after cache hit on subsequent resizes)
-- 1 imagined reference (GPT Image 2)
-- 1–3 re-layout calls (mini, occasionally 4.1)
-- 1–3 verify calls (mini)
-- Target: ≤ $0.05 per resize on the median PSD after cache warm-up.
-
-**Metrics emitted per resize** (for the eval set)
-
-`attempts`, `tier1FailCounts{check→n}`, `finalScore`, `rubricBreakdown`, `escalatedToBig`, `latencyMs`, `costUsd`. Logged to SQLite for the eval dashboard.
-
-## 11. UI (shadcn, light mode)
-
-- **Upload screen**: dropzone, recent PSDs list
-- **PSD detail**: left = source preview + semantic group tree (editable labels), right = "Generate sizes" panel with preset chips (1:1, 4:5, 9:16, 16:9, 300×600, 728×90, 160×600) + custom W×H
-- **Results gallery**: grid of target sizes, each card shows render + status badge + actions (regenerate, nudge, download, view HTML)
-- **Nudge dialog**: text input + optional reference image; triggers re-layout with extra constraint
-- Components: `Card`, `Button`, `Input`, `Dialog`, `Tabs`, `Badge`, `Tooltip`, `ScrollArea`, `Sonner` for toasts
-
-## 12. Milestones
-
-**M1 — Parse + Semantic Cache (week 1)**
-Upload PSD → parse → label/group via AI → cache. UI shows group tree.
-
-**M2 — HTML Emit + Render (week 1–2)**
-Deterministic PSD→HTML. Playwright screenshot matches source within visual tolerance.
-
-**M3 — Imagined Reference (week 2)**
-GPT Image 2 produces target-ratio refs from flattened source.
-
-**M4 — AI Re-layout v1 (week 2–3)**
-Mini model rewrites CSS for one new ratio. Manual eval on 10 PSDs × 4 ratios.
-
-**M5 — Verify Loop (week 3)**
-Add critique + retry. Track pass rate.
-
-**M6 — Gallery + Nudge UI (week 4)**
-End-to-end demoable.
-
-## 13. Success Metrics (R&D)
-
-- ≥70% of generated sizes accepted without nudging on the 10-PSD eval set
-- ≥85% with one nudge
-- Average cost per resize < $0.05 (after semantic cache hit)
-- Average time per resize < 20s end-to-end
-
-## 14. Key Risks & Mitigations
-
-| Risk | Mitigation |
-|---|---|
-| HTML render ≠ PSD render (fonts, blend modes) | Rasterize each layer to PNG up front; HTML just positions PNGs. No live text in v1. |
-| AI ignores imagined reference | Pass reference image directly in the multimodal prompt; verify loop scores against it. |
-| Aggressive ratio still breaks | Allow AI to hide `decoration`/`shadow_effect` groups; mark `importance` tiers. |
-| Cost blowup on iteration | Cache semantic pass; default to mini models; cap retries at 3. |
-| Messy unnamed layers | Semantic pass *renames* them; designer can correct in the group tree and re-cache. |
-
-## 15. Out of Scope (explicit)
-
-- Editable PSD export
-- Video / Lottie / animation
-- Live text editing / font substitution intelligence
-- Brand-kit memory across PSDs (later)
-- Auth, billing, multi-tenant
+Copy `web/.env.example` → `web/.env`, set `OPENAI_API_KEY`. Switch `AI_PROVIDER=stub` to run entirely offline.
