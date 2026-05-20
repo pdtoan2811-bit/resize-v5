@@ -43,8 +43,20 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/psd/[id]/re
   const outDir = rendersDir(psd.id);
   await ensureDir(outDir);
 
-  // Source HTML used by Mode 2 (rewrite) as the starting point.
-  const { html: sourceHtml } = emitHtml({ psd: parsed, semantic, assetBaseUrl: baseUrl });
+  // Source HTML used by Mode 2 (rewrite) as the starting point. Honors the
+  // PSD's selected engine — AI-authored source if available, else algorithm.
+  let sourceHtml: string;
+  if (psd.sourceEngine === "ai") {
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const { psdDir } = await import("@/lib/storage");
+      sourceHtml = await readFile(path.join(psdDir(psd.hash), "source-ai.html"), "utf8");
+    } catch {
+      sourceHtml = emitHtml({ psd: parsed, semantic, assetBaseUrl: baseUrl }).html;
+    }
+  } else {
+    sourceHtml = emitHtml({ psd: parsed, semantic, assetBaseUrl: baseUrl }).html;
+  }
 
   const results = [];
   for (const t of body.targets) {

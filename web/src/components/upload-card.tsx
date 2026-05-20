@@ -38,7 +38,7 @@ export function UploadCard() {
             }}
           />
           <div className="text-sm font-medium">{isPending ? "Uploading…" : "Drop a PSD or click to select"}</div>
-          <div className="text-xs text-muted-foreground">.psd files only · cached by content hash</div>
+          <div className="text-xs text-muted-foreground">.psd · cached by content hash · pick engine (algorithm or AI) after upload</div>
           {err && <div className="text-xs text-red-600 mt-2">{err}</div>}
         </label>
         <div className="flex justify-end mt-3">

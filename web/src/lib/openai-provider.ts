@@ -11,7 +11,7 @@ import {
   type Role,
   type Importance,
 } from "./types";
-import type { AIProvider, HeuristicHints, ReLayoutArgs, RewriteHtmlArgs, VerifyArgs } from "./ai-provider";
+import type { AIProvider, GenerateSourceArgs, HeuristicHints, ReLayoutArgs, RewriteHtmlArgs, VerifyArgs } from "./ai-provider";
 import { sanitizeRewrittenHtml } from "./sanitize-html";
 import { renderContextPrompt, type LayeredContext } from "./context";
 import { imagineDir, ensureDir } from "./storage";
@@ -554,6 +554,89 @@ Return JSON with the full new HTML.`;
     const parsed = JSON.parse(raw) as { html: string; reasoning: string };
     const { html, warnings } = sanitizeRewrittenHtml(parsed.html, allowedLids);
     if (warnings.length) console.warn("rewriteHtml sanitize:", warnings.slice(0, 5));
+    return { html, reasoning: parsed.reasoning };
+  }
+
+  async generateSourceHtml(args: GenerateSourceArgs): Promise<{ html: string; reasoning: string }> {
+    const c = client();
+    const sourceFlatUrl = await fileToDataUrl(args.psd.flattenedPath);
+    const allowedLids = new Set(args.psd.layers.filter((l) => !l.hidden).map((l) => l.lid));
+    const inventory = args.semantic.groups.map((g) => ({
+      gid: g.gid, role: g.role, importance: g.importance, anchorHint: g.anchorHint ?? null,
+      label: g.label, layerIds: g.layerIds,
+    }));
+
+    const system = `You are a senior brand designer rewriting an existing PSD key visual as a polished, semantic HTML+CSS document AT ITS ORIGINAL canvas size.
+
+Goal: produce a single self-contained HTML document that recreates the source design faithfully, but as the modern web layout it WOULD be if a brand designer wrote it from scratch — clean DOM, semantic groups preserved, brand context honored.
+
+You receive:
+- The flattened source image (visual reference)
+- A semantic inventory of layer groups (lid, gid, role, importance, anchor)
+- The algorithm engine's deterministic HTML output (an exact translation — use it as the source of truth for asset URLs and dimensions, but you may restructure freely)
+- Optionally, brand context (voice, do's, don'ts) to inform stylistic choices
+
+Hard rules:
+- Use ONLY existing layer images. Every <img src> must be /api/asset/<hash>/l<N>.png matching the algorithm HTML.
+- Preserve data-lid, data-gid, data-role, data-importance attrs on group containers / layer imgs so downstream resize logic still works.
+- The root .kv container: set width:100%; height:100%; aspect-ratio:${args.psd.width} / ${args.psd.height}; container-type:size; position:relative; overflow:hidden.
+- All CSS inline in a single <style>. No external resources, no <script>, no <iframe>.
+- Faithful at the SOURCE ratio: someone viewing it at ${args.psd.width}×${args.psd.height} should see the original design intent.
+
+Creative freedom:
+- Use modern CSS (flex/grid/cqi/cqh/clip-path/transforms/gradients) — express the design as a real layout, not a stack of absolutely-positioned rectangles.
+- Use brand-context voice and do's/don'ts to refine the styling.
+- You may add semantic structure (<header>, <section>) on top of the .group divs.
+
+Output JSON: { "html": "<!doctype html>...", "reasoning": "one sentence" }`;
+
+    const userText =
+`Source canvas: ${args.psd.width}×${args.psd.height}
+
+Semantic group inventory:
+${JSON.stringify(inventory, null, 2)}
+
+Allowed layer IDs:
+${[...allowedLids].join(", ")}
+
+Algorithm engine's HTML (source of truth for asset URLs and dimensions; restructure freely):
+${args.algorithmHtml}
+
+Return JSON with the full new HTML at native ${args.psd.width}×${args.psd.height} dimensions.`;
+
+    const ctxPreamble = args.context ? renderContextPrompt(args.context) : "";
+    const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
+
+    const res = await c.chat.completions.create({
+      model: TEXT_MODEL,
+      messages: [
+        { role: "system", content: sysMsg },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: userText },
+            { type: "image_url", image_url: { url: sourceFlatUrl } },
+          ] as never,
+        },
+      ],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "SourceHtml", strict: true,
+          schema: {
+            type: "object", additionalProperties: false,
+            properties: { html: { type: "string" }, reasoning: { type: "string" } },
+            required: ["html", "reasoning"],
+          },
+        },
+      },
+    });
+
+    const raw = res.choices[0]?.message?.content;
+    if (!raw) throw new Error("generateSourceHtml: empty response");
+    const parsed = JSON.parse(raw) as { html: string; reasoning: string };
+    const { html, warnings } = sanitizeRewrittenHtml(parsed.html, allowedLids);
+    if (warnings.length) console.warn("generateSourceHtml sanitize:", warnings.slice(0, 5));
     return { html, reasoning: parsed.reasoning };
   }
 

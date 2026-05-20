@@ -14,12 +14,20 @@ export interface AIProvider {
   imagineReference(psd: ParsedPsd, targetW: number, targetH: number): Promise<{ pngPath: string; prompt: string } | null>;
   reLayout(args: ReLayoutArgs): Promise<ReLayoutResult>;
   rewriteHtml(args: RewriteHtmlArgs): Promise<{ html: string; reasoning: string }>;
+  generateSourceHtml(args: GenerateSourceArgs): Promise<{ html: string; reasoning: string }>;
   verifyCritique(args: VerifyArgs): Promise<{
     score: number;
     rubric: Record<string, { score: number; note: string }>;
     issues: Array<{ gid: string | null; kind: string; detail: string }>;
     suggestions: string[];
   } | null>;
+}
+
+export interface GenerateSourceArgs {
+  psd: ParsedPsd;
+  semantic: SemanticResult;
+  algorithmHtml: string;
+  context?: LayeredContext;
 }
 
 export interface RewriteHtmlArgs {
@@ -130,6 +138,10 @@ export class StubAIProvider implements AIProvider {
 
   async rewriteHtml({ sourceHtml }: RewriteHtmlArgs): Promise<{ html: string; reasoning: string }> {
     return { html: sourceHtml, reasoning: "stub: pass-through" };
+  }
+
+  async generateSourceHtml({ algorithmHtml }: GenerateSourceArgs): Promise<{ html: string; reasoning: string }> {
+    return { html: algorithmHtml, reasoning: "stub: returns algorithm output unchanged" };
   }
 
   async verifyCritique(): Promise<null> {

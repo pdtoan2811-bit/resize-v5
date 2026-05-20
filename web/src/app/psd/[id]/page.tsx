@@ -8,6 +8,7 @@ import { Studio } from "@/components/studio";
 import { ResponsivePreview } from "@/components/responsive-preview";
 import { ProjectNotes } from "@/components/project-notes";
 import { ReSemanticButton } from "@/components/re-semantic-button";
+import { EngineChoice } from "@/components/engine-choice";
 
 export default async function PsdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -43,6 +44,13 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
             </div>
           </div>
         </header>
+
+        <EngineChoice
+          psdId={psd.id}
+          current={(psd.sourceEngine === "ai" ? "ai" : "algorithm") as "algorithm" | "ai"}
+          reasoning={psd.sourceAiReason ?? null}
+          hasRewriteRenders={psd.renders.some((r) => r.mode === "rewrite")}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Sidebar */}

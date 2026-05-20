@@ -8,13 +8,18 @@ datasource db {
 }
 
 model Psd {
-  id             String   @id @default(cuid())
-  hash           String   @unique
-  filename       String
-  width          Int
-  height        Int
-  createdAt     DateTime @default(now())
-  iterationNotes String?  // Level 2: accumulated learnings for this PSD
+  id              String   @id @default(cuid())
+  hash            String   @unique
+  filename        String
+  width           Int
+  height          Int
+  createdAt       DateTime @default(now())
+  iterationNotes  String?  // Level 2: accumulated learnings for this PSD
+  // Which engine produces the source HTML used by previews and AI Rewrite:
+  //   "algorithm" — deterministic emit (cheap, exact reproduction)
+  //   "ai"        — AI-authored HTML/CSS conditioned on brand context
+  sourceEngine    String   @default("algorithm")
+  sourceAiReason  String?  // one-line reasoning the AI gave for its source design
 
   layers      Layer[]
   groups      Group[]
