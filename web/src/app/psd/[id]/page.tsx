@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Studio } from "@/components/studio";
 import { ResponsivePreview } from "@/components/responsive-preview";
 import { ProjectNotes } from "@/components/project-notes";
+import { ReSemanticButton } from "@/components/re-semantic-button";
 
 export default async function PsdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -77,8 +78,9 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">
-                  Semantic groups
+                <CardTitle className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground flex items-center justify-between gap-2">
+                  <span>Semantic groups</span>
+                  <ReSemanticButton psdId={psd.id} renderCount={psd.renders.length} />
                 </CardTitle>
               </CardHeader>
               <CardContent>
