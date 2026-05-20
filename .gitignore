@@ -1,0 +1,55 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit. Use .env.example for templates.
+.env
+.env.*
+!**/.env.example
+
+# Node / Next
+node_modules/
+.next/
+out/
+.pnpm-debug.log
+.pnp.*
+.yarn/cache
+.yarn/install-state.gz
+
+# Build outputs
+build/
+dist/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[oc]
+.venv/
+*.egg-info/
+
+# Generated Prisma client (regenerated on install)
+web/src/generated/prisma/
+
+# Local DB + caches
+*.db
+*.db-journal
+web/.cache/
+.cache/
+
+# Editor
+.vscode/
+.idea/
+.claude/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Playwright
+playwright-report/
+.last-run.json
+
+# misc
+*.pem
+.vercel/

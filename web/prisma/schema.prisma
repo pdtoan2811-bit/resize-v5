@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Psd {
+  id             String   @id @default(cuid())
+  hash           String   @unique
+  filename       String
+  width          Int
+  height        Int
+  createdAt     DateTime @default(now())
+  iterationNotes String?  // Level 2: accumulated learnings for this PSD
+
+  layers      Layer[]
+  groups      Group[]
+  renders     Render[]
+  imagineRefs ImagineRef[]
+}
+
+// Level 3: organization-wide context. Singleton row (id = "default").
+model Organization {
+  id        String   @id @default("default")
+  brandName String?
+  voice     String?  // tone of voice, brand persona
+  audience  String?  // target audience description
+  doRules   String?  // markdown bullet list of do's
+  dontRules String?  // markdown bullet list of don'ts
+  freeform  String?  // anything else
+  updatedAt DateTime @updatedAt
+}
+
+model Layer {
+  id      String @id @default(cuid())
+  psdId   String
+  lid     String
+  name    String
+  x       Int
+  y       Int
+  w       Int
+  h       Int
+  z       Int
+  opacity Float  @default(1)
+  bm      String @default("normal")
+  pngPath String
+  kind    String
+
+  psd Psd @relation(fields: [psdId], references: [id], onDelete: Cascade)
+
+  @@unique([psdId, lid])
+}
+
+model Group {
+  id         String  @id @default(cuid())
+  psdId      String
+  gid        String
+  role       String
+  label      String
+  importance String
+  layerIds   String
+  anchorHint String?
+  rationale  String?
+  userEdited Boolean @default(false)
+
+  psd Psd @relation(fields: [psdId], references: [id], onDelete: Cascade)
+
+  @@unique([psdId, gid])
+}
+
+model Render {
+  id         String   @id @default(cuid())
+  psdId      String
+  mode       String   @default("responsive") // responsive | rewrite
+  targetW    Int
+  targetH    Int
+  presetName String?
+  layoutJson String
+  htmlPath   String?
+  pngPath    String?
+  status     String   @default("pending")
+  score      Float?
+  rubricJson String?
+  reasoning  String?
+  attempts   Int      @default(0)
+  costUsd    Float    @default(0)
+  latencyMs  Int?
+  createdAt  DateTime @default(now())
+
+  psd Psd @relation(fields: [psdId], references: [id], onDelete: Cascade)
+
+  @@unique([psdId, mode, targetW, targetH])
+}
+
+model ImagineRef {
+  id      String @id @default(cuid())
+  psdId   String
+  targetW Int
+  targetH Int
+  prompt  String
+  pngPath String
+
+  psd Psd @relation(fields: [psdId], references: [id], onDelete: Cascade)
+
+  @@unique([psdId, targetW, targetH])
+}
