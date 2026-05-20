@@ -391,7 +391,7 @@ The image below is the flattened source. Group the layers semantically and retur
     return { groups, unassigned: parsed.unassigned ?? [], notes: parsed.notes ?? undefined };
   }
 
-  async imagineReference(psd: ParsedPsd, targetW: number, targetH: number): Promise<{ pngPath: string; prompt: string } | null> {
+  async imagineReference(psd: ParsedPsd, targetW: number, targetH: number, context?: LayeredContext): Promise<{ pngPath: string; prompt: string } | null> {
     const c = client();
     const dir = imagineDir(psd.hash);
     await ensureDir(dir);
@@ -410,8 +410,11 @@ The image below is the flattened source. Group the layers semantically and retur
             ? "landscape"
             : "portrait";
 
+    // Layered context — brand identity + resize stage + project notes +
+    // task brief — folded into the single prompt string the image API takes.
+    const ctxPreamble = context ? renderContextPrompt(context, "resize") : "";
     const prompt = `Aesthetic composition reference for a ${targetW}x${targetH} (${ratioDesc}) ad layout, derived from the supplied source key visual.
-Keep the brand identity, color palette, and main subject. Re-flow composition for this aspect ratio with proper hierarchy: brand mark, headline area, focal subject/product, CTA region. Use clean ad-design composition with breathing room and safe margins. No text content needed — block shapes are fine. Output should read as a low-fi layout study, not a finished render.`;
+Keep the brand identity, color palette, and main subject. Re-flow composition for this aspect ratio with proper hierarchy: brand mark, headline area, focal subject/product, CTA region. Use clean ad-design composition with breathing room and safe margins. No text content needed — block shapes are fine. Output should read as a low-fi layout study, not a finished render.${ctxPreamble ? `\n\n${ctxPreamble}` : ""}`;
 
     // Pick the closest supported size to the target ratio.
     const size = pickImageSize(targetW, targetH);
@@ -589,7 +592,9 @@ Return JSON with the full new HTML.`;
     if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
     content.push(...groupImgs.blocks);
 
-    const ctxPreamble = args.context ? renderContextPrompt(args.context, "resize") : "";
+    // Rewrite writes HTML *for* a target — pull both the HTML/CSS engine
+    // prefs (sourceEngine) and the re-layout rules (resize).
+    const ctxPreamble = args.context ? renderContextPrompt(args.context, ["sourceEngine", "resize"]) : "";
     const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
 
     const res = await c.chat.completions.create({

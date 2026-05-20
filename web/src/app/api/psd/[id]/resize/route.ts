@@ -64,7 +64,7 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/psd/[id]/re
     // Naive + Auto modes are AI-free; no imagine ref needed.
     const imagined = body.mode === "auto" || body.mode === "naive"
       ? null
-      : await provider.imagineReference(parsed, t.w, t.h);
+      : await provider.imagineReference(parsed, t.w, t.h, layered);
     const slug = `${body.mode}_${t.w}x${t.h}`;
 
     type Candidate = {

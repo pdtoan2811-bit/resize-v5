@@ -75,13 +75,32 @@ const STAGE_FIELD: Record<Stage, keyof OrgContext> = {
 };
 
 /**
- * Render the layered context prompt for a specific stage.
- * - Brand identity (always)
- * - Stage-specific block (only if this stage has one)
- * - Project notes (L2)
- * - Task brief (L1, highest priority)
+ * Source of truth for which stage blocks each AI call receives.
+ * Used by both the provider implementations and the context-preview endpoint.
  */
-export function renderContextPrompt(ctx: LayeredContext, stage: Stage): string {
+export const STEPS_BY_AI_CALL = {
+  semanticPass:        ["grouping"]                    as Stage[],
+  generateSourceHtml:  ["sourceEngine"]                as Stage[],
+  imagineReference:    ["resize"]                      as Stage[],
+  reLayout:            ["resize"]                      as Stage[],
+  rewriteHtml:         ["sourceEngine", "resize"]      as Stage[],
+  verifyCritique:      ["verify"]                      as Stage[],
+} as const;
+
+/**
+ * Render the layered context prompt for one or more stages.
+ * Layer order in the prompt (always — top to bottom):
+ *   1. Brand identity (every AI call)
+ *   2. One block per requested stage (skipped when that stage's field is empty)
+ *   3. Project notes (L2)
+ *   4. Task brief (L1, highest priority)
+ *
+ * Pass an array of stages when an AI call sits at the intersection of two
+ * concerns (e.g. rewriteHtml writes HTML *for* a target — needs both the
+ * `sourceEngine` HTML/CSS prefs and the `resize` re-layout rules).
+ */
+export function renderContextPrompt(ctx: LayeredContext, stages: Stage | Stage[]): string {
+  const stageList = Array.isArray(stages) ? stages : [stages];
   const sections: string[] = [];
 
   if (ctx.org) {
@@ -94,9 +113,11 @@ export function renderContextPrompt(ctx: LayeredContext, stage: Stage): string {
     if (ctx.org.freeform) id.push(`Other notes:\n${ctx.org.freeform}`);
     if (id.length) sections.push("### Brand identity (applies to every AI call)\n" + id.join("\n"));
 
-    const stageVal = ctx.org[STAGE_FIELD[stage]];
-    if (stageVal && typeof stageVal === "string" && stageVal.trim()) {
-      sections.push(`### ${STAGE_LABEL[stage]}\n${stageVal.trim()}`);
+    for (const s of stageList) {
+      const v = ctx.org[STAGE_FIELD[s]];
+      if (v && typeof v === "string" && v.trim()) {
+        sections.push(`### ${STAGE_LABEL[s]}\n${v.trim()}`);
+      }
     }
   }
 

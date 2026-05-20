@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { DeletePsdButton } from "@/components/delete-psd-button";
+import { InspectContext } from "@/components/inspect-context";
 import { Stepper } from "@/components/wizard/stepper";
 import { StepPrep } from "@/components/wizard/step-prep";
 import { StepGroups } from "@/components/wizard/step-groups";
@@ -59,6 +60,7 @@ export default async function PsdPage({
               <Link href="/settings" className="hover:text-foreground transition-colors" title="Brand context">
                 Context · <span className="font-mono">{ctxOnCount}/5</span>
               </Link>
+              <InspectContext psdId={psd.id} />
               <DeletePsdButton psdId={psd.id} filename={psd.filename} renderCount={psd.renders.length} />
             </div>
           </div>

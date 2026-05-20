@@ -20,7 +20,9 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/psd/[id]/r
     const parsed = await loadParsed(psd.hash);
     const provider = getProvider();
     const hints = runHeuristics(parsed);
-    const layered = await loadLayeredContext(null, null);
+    // Pass psd.id so L2 project notes (including auto-collected critique
+    // suggestions from past renders) flow into the grouping prompt.
+    const layered = await loadLayeredContext(psd.id, null);
 
     const semantic = await provider.semanticPass(parsed, hints, layered);
 

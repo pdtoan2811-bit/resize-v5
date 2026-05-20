@@ -11,7 +11,7 @@ import type { LayeredContext } from "./context";
 
 export interface AIProvider {
   semanticPass(psd: ParsedPsd, heuristics: HeuristicHints, context?: LayeredContext): Promise<SemanticResult>;
-  imagineReference(psd: ParsedPsd, targetW: number, targetH: number): Promise<{ pngPath: string; prompt: string } | null>;
+  imagineReference(psd: ParsedPsd, targetW: number, targetH: number, context?: LayeredContext): Promise<{ pngPath: string; prompt: string } | null>;
   reLayout(args: ReLayoutArgs): Promise<ReLayoutResult>;
   rewriteHtml(args: RewriteHtmlArgs): Promise<{ html: string; reasoning: string }>;
   generateSourceHtml(args: GenerateSourceArgs): Promise<{ html: string; reasoning: string }>;
@@ -141,7 +141,7 @@ export class StubAIProvider implements AIProvider {
     return { groups, unassigned: [], notes: "stub semantic pass with spatial clustering" };
   }
 
-  async imagineReference(): Promise<null> {
+  async imagineReference(_psd: ParsedPsd, _targetW: number, _targetH: number, _context?: LayeredContext): Promise<null> {
     return null; // no AI image gen in stub mode
   }
 
