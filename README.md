@@ -48,7 +48,7 @@ cd web && pnpm install && pnpm dlx prisma migrate dev && pnpm dev
 - **Prisma 7** with `better-sqlite3` adapter for local zero-config persistence
 - **Playwright** Chromium for rendering HTML → PNG
 - **psd-tools** (Python / FastAPI) for parsing and layer rasterization
-- **OpenAI** — `gpt-5.3-codex` for semantic / layout / verify; `gpt-image-2` for aesthetic references
+- **OpenAI** — `gpt-5.4` for semantic / layout / verify; `gpt-image-2` for aesthetic references
 
 Swap `AI_PROVIDER=stub` in `web/.env` to run fully offline (heuristics only).
 

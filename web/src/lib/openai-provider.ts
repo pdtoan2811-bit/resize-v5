@@ -16,7 +16,7 @@ import { sanitizeRewrittenHtml } from "./sanitize-html";
 import { renderContextPrompt, type LayeredContext } from "./context";
 import { imagineDir, ensureDir } from "./storage";
 
-const TEXT_MODEL = process.env.OPENAI_MODEL_TEXT ?? "gpt-5.3-codex";
+const TEXT_MODEL = process.env.OPENAI_MODEL_TEXT ?? "gpt-5.4";
 const IMAGE_MODEL = process.env.OPENAI_MODEL_IMAGE ?? "gpt-image-2-2026-04-21";
 
 function client(): OpenAI {

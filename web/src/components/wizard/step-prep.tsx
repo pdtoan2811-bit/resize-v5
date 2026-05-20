@@ -117,7 +117,7 @@ export function StepPrep({
               {busy ? "Running grouping…" : "Run semantic grouping →"}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center">
-              ~$0.02 · gpt-5.3-codex vision · cached forever
+              ~$0.02 · gpt-5.4 vision · cached forever
             </p>
           </CardContent>
         </Card>
