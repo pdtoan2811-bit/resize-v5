@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,7 +21,7 @@ export function ProjectNotes({ psdId, initial }: { psdId: string; initial: strin
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ iterationNotes: value.trim() || null }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       setSavedValue(value);
       toast.success("Project notes saved");
     } catch (e) {

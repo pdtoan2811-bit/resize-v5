@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -34,7 +36,7 @@ export function StepGroups({ psdId, psdHash, groups, renderCount }: Props) {
     setBusy(true);
     try {
       const res = await fetch(`/api/psd/${psdId}/resemantic`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       const data = await res.json();
       toast.success(`Re-grouped · ${data.groupsCount} units`);
       router.refresh();

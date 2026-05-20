@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -17,7 +19,7 @@ export function ReSemanticButton({ psdId, renderCount }: { psdId: string; render
     setBusy(true);
     try {
       const res = await fetch(`/api/psd/${psdId}/resemantic`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       const data = await res.json();
       toast.success(`Re-analyzed · ${data.groupsCount} groups · past renders cleared`);
       setOpen(false);

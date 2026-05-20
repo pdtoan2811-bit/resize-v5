@@ -30,13 +30,23 @@ export function StepPrep({
     setBusy(true);
     try {
       const res = await fetch(`/api/psd/${psdId}/resemantic`, { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      toast.success(`Grouped · ${data.groupsCount} semantic units`);
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        const msg = (data as { error?: string }).error
+          || `Server returned ${res.status} ${res.statusText || ""}`.trim()
+          || "Grouping failed with no message";
+        throw new Error(msg);
+      }
+      toast.success(`Grouped · ${(data as { groupsCount?: number }).groupsCount ?? 0} semantic units`);
       router.push(`/psd/${psdId}?step=groups`);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Grouping failed", {
+        description: "Check server console for the full stack. Often: bad OPENAI_API_KEY, wrong OPENAI_MODEL_TEXT, or the model doesn't accept image input.",
+        duration: 10000,
+      });
+      console.error("Grouping failed:", e);
     } finally {
       setBusy(false);
     }
@@ -107,7 +117,7 @@ export function StepPrep({
               {busy ? "Running grouping…" : "Run semantic grouping →"}
             </Button>
             <p className="text-[10px] text-muted-foreground text-center">
-              ~$0.02 · gpt-5.4-mini vision · cached forever
+              ~$0.02 · gpt-5.3-codex vision · cached forever
             </p>
           </CardContent>
         </Card>

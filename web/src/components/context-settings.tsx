@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -103,7 +105,7 @@ export function ContextSettings({ initial }: { initial: Fields }) {
           verifyContext: v.verifyContext.trim() || null,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       setSavedV(v);
       toast.success("Saved · applied to all future AI calls");
     } catch (e) {

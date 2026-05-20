@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,7 +55,7 @@ export function EngineChoice({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ engine }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       toast.success(
         engine === "ai"
           ? "AI source ready · brand context applied"

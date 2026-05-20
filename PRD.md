@@ -330,7 +330,7 @@ Both prompts receive: source flattened PNG + (imagined target reference if gener
 - File cache at `.cache/psd/<hash>/{layers,imagine}/`, `.cache/renders/<psdId>/`
 
 **AI**
-- **gpt-5.4-mini** for semantic / re-layout / verify / rewriteHtml / generateSourceHtml (configurable via `OPENAI_MODEL_TEXT`)
+- **gpt-5.3-codex** for semantic / re-layout / verify / rewriteHtml / generateSourceHtml (configurable via `OPENAI_MODEL_TEXT`)
 - **gpt-image-2-2026-04-21** for aesthetic reference generation via `images.edit` conditioned on the flattened source (configurable via `OPENAI_MODEL_IMAGE`)
 - `AI_PROVIDER=stub` runs fully offline — heuristic semantic clustering + deterministic algorithm modes only
 

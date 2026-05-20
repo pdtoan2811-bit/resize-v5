@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,7 +19,7 @@ export function ClearAllButton({ count }: { count: number }) {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/reset", { method: "POST" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       toast.success("Everything cleared");
       router.refresh();
     } catch (e) {

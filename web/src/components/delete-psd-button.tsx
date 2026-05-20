@@ -7,6 +7,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { describeFetchError } from "@/lib/fetch-error";
 
 export function DeletePsdButton({ psdId, filename, renderCount }: { psdId: string; filename: string; renderCount: number }) {
   const router = useRouter();
@@ -17,7 +18,7 @@ export function DeletePsdButton({ psdId, filename, renderCount }: { psdId: strin
     setBusy(true);
     try {
       const res = await fetch(`/api/psd/${psdId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       toast.success("PSD deleted");
       router.push("/");
     } catch (e) {

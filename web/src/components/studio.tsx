@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -130,7 +132,7 @@ export function Studio({
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ mode, targets: [target], nudge: nudge || undefined }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw await describeFetchError(res);
       }
       setProgress({ total: tasks.length, done: tasks.length });
       const dt = ((performance.now() - t0) / 1000).toFixed(1);

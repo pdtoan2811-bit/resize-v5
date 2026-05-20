@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -28,7 +30,7 @@ export function InlineEngine({
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ engine: next }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       toast.success(next === "ai" ? "AI source generated" : "Back to algorithm engine");
       router.refresh();
     } catch (e) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,7 +47,7 @@ export function ResizePanel({ psdId }: { psdId: string }) {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ targets }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       router.refresh();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));

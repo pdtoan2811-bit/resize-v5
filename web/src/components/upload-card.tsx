@@ -1,5 +1,7 @@
 "use client";
 
+import { describeFetchError } from "@/lib/fetch-error";
+
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,7 +18,7 @@ export function UploadCard() {
     fd.append("file", file);
     try {
       const res = await fetch("/api/upload", { method: "POST", body: fd });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw await describeFetchError(res);
       const { id } = await res.json();
       startTransition(() => router.push(`/psd/${id}`));
     } catch (e) {
