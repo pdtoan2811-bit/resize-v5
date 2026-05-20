@@ -5,9 +5,8 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { ensureDir, psdDir, layersDir } from "@/lib/storage";
 import { parsePsdViaWorker } from "@/lib/worker";
-import { runHeuristics } from "@/lib/heuristics";
-import { getProvider } from "@/lib/ai-provider";
-import { loadLayeredContext } from "@/lib/context";
+// Upload only parses & rasters layers — semantic grouping is deferred to
+// Step 1 of the post-upload wizard so the designer can review context first.
 
 export async function POST(req: NextRequest) {
   const form = await req.formData();
@@ -30,17 +29,9 @@ export async function POST(req: NextRequest) {
   await writeFile(psdPath, buf);
 
   const parsed = await parsePsdViaWorker(buf, file.name, layersDir(hash));
-  // Persist parsed result
   await writeFile(path.join(dir, "parsed.json"), JSON.stringify(parsed));
 
-  // Semantic pass (stub provider in v0)
-  const provider = getProvider();
-  const hints = runHeuristics(parsed);
-  const ctx = await loadLayeredContext(null, null); // no per-PSD context yet; org-level only at upload time
-  const semantic = await provider.semanticPass(parsed, hints, ctx);
-  await writeFile(path.join(dir, "semantic.json"), JSON.stringify(semantic));
-
-  // DB write
+  // DB write — layers only. Groups stay empty until Step 1 (Prep → Run grouping).
   const psd = await prisma.psd.create({
     data: {
       hash,
@@ -53,17 +44,6 @@ export async function POST(req: NextRequest) {
           name: l.name,
           x: l.x, y: l.y, w: l.w, h: l.h, z: l.z,
           opacity: l.opacity, bm: l.bm, pngPath: l.pngPath, kind: l.kind,
-        })),
-      },
-      groups: {
-        create: semantic.groups.map((g) => ({
-          gid: g.gid,
-          role: g.role,
-          label: g.label,
-          importance: g.importance,
-          layerIds: JSON.stringify(g.layerIds),
-          anchorHint: g.anchorHint,
-          rationale: g.rationale,
         })),
       },
     },

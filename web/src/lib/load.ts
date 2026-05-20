@@ -9,6 +9,13 @@ export async function loadParsed(hash: string): Promise<ParsedPsd> {
 }
 
 export async function loadSemantic(hash: string): Promise<SemanticResult> {
-  const buf = await readFile(path.join(psdDir(hash), "semantic.json"), "utf8");
-  return JSON.parse(buf) as SemanticResult;
+  try {
+    const buf = await readFile(path.join(psdDir(hash), "semantic.json"), "utf8");
+    return JSON.parse(buf) as SemanticResult;
+  } catch {
+    // Pre-grouping (Step 1 not yet run). Return an empty result so downstream
+    // code doesn't crash; callers should check `groups.length` if they need
+    // actual semantic data.
+    return { groups: [], unassigned: [], notes: "no semantic pass yet" };
+  }
 }
