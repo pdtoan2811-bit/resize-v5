@@ -1,15 +1,15 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Studio } from "@/components/studio";
 import { ResponsivePreview } from "@/components/responsive-preview";
 import { ProjectNotes } from "@/components/project-notes";
 import { ReSemanticButton } from "@/components/re-semantic-button";
-import { EngineChoice } from "@/components/engine-choice";
-import { ContextBar } from "@/components/context-bar";
+import { InlineEngine } from "@/components/inline-engine";
+import { DeletePsdButton } from "@/components/delete-psd-button";
+import { Disclosure } from "@/components/disclosure";
 
 export default async function PsdPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,80 +31,69 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
     resize: !!org?.resizeContext,
     verify: !!org?.verifyContext,
   };
+  const ctxOnCount = Object.values(ctxFlags).filter(Boolean).length;
+  const rewriteRenderCount = psd.renders.filter((r) => r.mode === "rewrite").length;
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      <main className="mx-auto max-w-7xl px-6 py-8 space-y-7">
-        {/* Header */}
-        <header className="space-y-1">
-          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <Link href="/" className="hover:text-foreground transition-colors">All PSDs</Link>
-              <span>/</span>
-              <span className="font-mono">{psd.hash.slice(0, 8)}</span>
+      <main className="mx-auto max-w-7xl px-6 py-7 space-y-6">
+        {/* ── Toolbar ────────────────────────────────────────────── */}
+        <header className="space-y-2">
+          <div className="flex items-center justify-between gap-4 text-[11px] text-muted-foreground">
+            <Link href="/" className="hover:text-foreground transition-colors">← All PSDs</Link>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/settings"
+                className="hover:text-foreground transition-colors"
+                title="Brand context"
+              >
+                Context · <span className="font-mono">{ctxOnCount}/5</span>
+              </Link>
+              <DeletePsdButton psdId={psd.id} filename={psd.filename} renderCount={psd.renders.length} />
             </div>
-            <Link href="/settings" className="hover:text-foreground transition-colors underline-offset-2 hover:underline">Brand context →</Link>
           </div>
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <h1 className="text-xl font-semibold tracking-tight truncate">{psd.filename}</h1>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-[10px] font-mono">{psd.width}×{psd.height}</Badge>
-              <Badge variant="outline" className="text-[10px]">{psd._count.layers} layers</Badge>
-              <Badge variant="secondary" className="text-[10px]">{psd.groups.length} groups</Badge>
+              <Badge variant="outline" className="text-[10px]">{psd._count.layers} layers · {psd.groups.length} groups</Badge>
+              <Badge variant="secondary" className="text-[10px] font-mono">{psd.hash.slice(0, 8)}</Badge>
             </div>
           </div>
         </header>
 
-        <ContextBar flags={ctxFlags} />
-
-        <EngineChoice
-          psdId={psd.id}
-          current={(psd.sourceEngine === "ai" ? "ai" : "algorithm") as "algorithm" | "ai"}
-          reasoning={psd.sourceAiReason ?? null}
-          hasRewriteRenders={psd.renders.some((r) => r.mode === "rewrite")}
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-          {/* Sidebar */}
-          <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
+        {/* ── Workspace: SOURCE | GENERATE ───────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-6 items-start">
+          {/* SOURCE column */}
+          <aside className="space-y-3 lg:sticky lg:top-6">
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">
-                  Source · live preview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
+                <div className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground">
+                  Source
+                </div>
                 <ResponsivePreview
                   psdId={psd.id}
                   targetW={psd.width}
                   targetH={psd.height}
-                  label="Original"
+                  label=""
                   status="passed"
                   srcUrl={`/api/psd/${psd.id}/source.html`}
                 />
-              </CardContent>
-            </Card>
+                <InlineEngine
+                  psdId={psd.id}
+                  current={(psd.sourceEngine === "ai" ? "ai" : "algorithm") as "algorithm" | "ai"}
+                  reasoning={psd.sourceAiReason ?? null}
+                  hasRewriteRenders={rewriteRenderCount > 0}
+                />
 
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground flex items-center justify-between">
-                  <span>Project notes <span className="text-zinc-400">· Level 2</span></span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ProjectNotes psdId={psd.id} initial={psd.iterationNotes ?? ""} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground flex items-center justify-between gap-2">
-                  <span>Semantic groups</span>
-                  <ReSemanticButton psdId={psd.id} renderCount={psd.renders.length} />
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-64 pr-2">
+                <Disclosure
+                  title="Semantic groups"
+                  meta={`${psd.groups.length} groups`}
+                  defaultOpen={false}
+                >
+                  <div className="flex items-center justify-end pb-2">
+                    <ReSemanticButton psdId={psd.id} renderCount={psd.renders.length} />
+                  </div>
                   <ul className="space-y-1">
                     {psd.groups.map((g) => {
                       const layerIds = JSON.parse(g.layerIds) as string[];
@@ -118,7 +107,7 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
                             </span>
                           </div>
                           <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                            {layerIds.length} layer{layerIds.length > 1 ? "s" : ""} · {layerIds.join(" + ")}
+                            {layerIds.join(" + ")}
                           </div>
                           {g.rationale && (
                             <div className="text-[10px] text-muted-foreground italic mt-0.5 line-clamp-2 leading-snug">
@@ -129,26 +118,37 @@ export default async function PsdPage({ params }: { params: Promise<{ id: string
                       );
                     })}
                   </ul>
-                </ScrollArea>
+                </Disclosure>
+
+                <Disclosure
+                  title="Project notes"
+                  meta={psd.iterationNotes ? "set" : "empty"}
+                  defaultOpen={false}
+                >
+                  <ProjectNotes psdId={psd.id} initial={psd.iterationNotes ?? ""} />
+                </Disclosure>
               </CardContent>
             </Card>
           </aside>
 
-          <Studio
-            psdId={psd.id}
-            psdHash={psd.hash}
-            initialRenders={psd.renders.map((r) => ({
-              id: r.id,
-              mode: r.mode,
-              targetW: r.targetW,
-              targetH: r.targetH,
-              presetName: r.presetName,
-              status: r.status,
-              score: r.score,
-              reasoning: r.reasoning,
-              latencyMs: r.latencyMs,
-            }))}
-          />
+          {/* GENERATE column */}
+          <div className="space-y-6">
+            <Studio
+              psdId={psd.id}
+              psdHash={psd.hash}
+              initialRenders={psd.renders.map((r) => ({
+                id: r.id,
+                mode: r.mode,
+                targetW: r.targetW,
+                targetH: r.targetH,
+                presetName: r.presetName,
+                status: r.status,
+                score: r.score,
+                reasoning: r.reasoning,
+                latencyMs: r.latencyMs,
+              }))}
+            />
+          </div>
         </div>
       </main>
     </div>

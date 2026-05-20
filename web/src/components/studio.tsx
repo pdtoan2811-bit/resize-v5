@@ -150,13 +150,18 @@ export function Studio({
     <div className="space-y-6">
       {/* Control panel */}
       <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold tracking-tight">Resize studio</CardTitle>
-          <CardDescription className="text-xs">
-            Pick one or more modes and one or more sizes. Each combination becomes a render — view them side by side below.
-          </CardDescription>
-        </CardHeader>
         <CardContent className="space-y-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold tracking-tight">Generate</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Pick mode(s) × size(s). Each combination becomes one render in the comparison below.
+              </p>
+            </div>
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {modes.size}·mode {selectedSizes.size + (customW && customH ? 1 : 0)}·size
+            </span>
+          </div>
           {/* Mode multi-select */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">

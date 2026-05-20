@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { UploadCard } from "@/components/upload-card";
+import { ClearAllButton } from "@/components/clear-all-button";
 
 export default async function Home() {
   const recent = await prisma.psd.findMany({
@@ -22,9 +23,12 @@ export default async function Home() {
               algorithmic baseline to a full AI HTML rewrite — and compare them side by side.
             </p>
           </div>
-          <Link href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline shrink-0">
-            Brand context →
-          </Link>
+          <div className="flex items-center gap-4 shrink-0">
+            <ClearAllButton count={recent.length} />
+            <Link href="/settings" className="text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline">
+              Brand context →
+            </Link>
+          </div>
         </header>
 
         <UploadCard />
