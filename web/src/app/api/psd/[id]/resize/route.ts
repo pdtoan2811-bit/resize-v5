@@ -102,18 +102,40 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/psd/[id]/re
         layoutForVerify = layout;
         reasoning = layout.reasoning ?? "";
       } else if (body.mode === "responsive") {
+        // Build a Naive baseline at the target dims and hand it to the AI as
+        // the starting point. The AI only needs to OVERRIDE groups that benefit
+        // from moving; unspecified groups inherit the baseline (proportional rescale).
+        const baselineLayout: ReLayoutResult = {
+          canvas: { w: t.w, h: t.h },
+          groups: [],
+          reasoning: "naive proportional baseline",
+        };
         const layout = await provider.reLayout({
           psd: parsed, semantic, targetW: t.w, targetH: t.h,
           imaginedRefPath: imagined?.pngPath, nudge: body.nudge, previousAttempt,
           context: layered,
+          baselineLayout,
         });
         ({ html } = applyLayout({ psd: parsed, semantic, layout, assetBaseUrl: baseUrl }));
         layoutJson = JSON.stringify(layout);
         layoutForVerify = layout;
         reasoning = layout.reasoning ?? "";
       } else {
+        // Use the Naive-at-target layout as the AI's starting HTML — the AI
+        // rewrites a layout that already places every group correctly, rather
+        // than rebuilding from a source-ratio document.
+        const naiveBaseline: ReLayoutResult = {
+          canvas: { w: t.w, h: t.h },
+          groups: [],
+          reasoning: "naive proportional baseline",
+        };
+        const baselineHtml = applyLayout({
+          psd: parsed, semantic, layout: naiveBaseline, assetBaseUrl: baseUrl,
+        }).html;
+
         const rewrite = await provider.rewriteHtml({
-          psd: parsed, semantic, sourceHtml, targetW: t.w, targetH: t.h,
+          psd: parsed, semantic, sourceHtml: baselineHtml,
+          targetW: t.w, targetH: t.h,
           imaginedRefPath: imagined?.pngPath, nudge: body.nudge, previousAttempt,
           context: layered,
         });

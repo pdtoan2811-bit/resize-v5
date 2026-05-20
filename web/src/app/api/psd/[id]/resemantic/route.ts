@@ -7,6 +7,7 @@ import { loadParsed } from "@/lib/load";
 import { runHeuristics } from "@/lib/heuristics";
 import { getProvider } from "@/lib/ai-provider";
 import { loadLayeredContext } from "@/lib/context";
+import { compositeGroups } from "@/lib/group-composite";
 
 export const maxDuration = 120;
 
@@ -28,6 +29,10 @@ export async function POST(_req: NextRequest, ctx: RouteContext<"/api/psd/[id]/r
     }
 
     await writeFile(path.join(psdDir(psd.hash), "semantic.json"), JSON.stringify(semantic));
+
+    // Composite each semantic group into a single PNG so downstream AI
+    // prompts can SEE each group, not just read its metadata.
+    await compositeGroups(parsed, semantic.groups);
 
     const rDir = rendersDir(psd.id);
     await safeRmDir(rDir);

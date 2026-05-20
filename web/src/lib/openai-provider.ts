@@ -15,6 +15,7 @@ import type { AIProvider, GenerateSourceArgs, HeuristicHints, ReLayoutArgs, Rewr
 import { sanitizeRewrittenHtml } from "./sanitize-html";
 import { renderContextPrompt, type LayeredContext } from "./context";
 import { imagineDir, ensureDir } from "./storage";
+import { listGroupComposites } from "./group-composite";
 
 const TEXT_MODEL = process.env.OPENAI_MODEL_TEXT ?? "gpt-5.4";
 const IMAGE_MODEL = process.env.OPENAI_MODEL_IMAGE ?? "gpt-image-2-2026-04-21";
@@ -28,6 +29,37 @@ function client(): OpenAI {
 async function fileToDataUrl(filePath: string, mime = "image/png"): Promise<string> {
   const buf = await readFile(filePath);
   return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
+/**
+ * Build the multimodal image attachments + a legend text for each semantic
+ * group's composite PNG. Used by generateSourceHtml, rewriteHtml, and reLayout
+ * so the AI gets a literal visual of what each group looks like.
+ */
+async function buildGroupImageBlocks(
+  psdHash: string,
+  groupOrder: string[],
+): Promise<{ blocks: Array<Record<string, unknown>>; legend: string }> {
+  const map = await listGroupComposites(psdHash);
+  if (map.size === 0) return { blocks: [], legend: "" };
+
+  const blocks: Array<Record<string, unknown>> = [];
+  const legendLines: string[] = [];
+  let idx = 1;
+  for (const gid of groupOrder) {
+    const p = map.get(gid);
+    if (!p) continue;
+    const url = await fileToDataUrl(p);
+    blocks.push({ type: "image_url", image_url: { url } });
+    legendLines.push(`  Image G${idx}: composite of group ${gid}`);
+    idx++;
+  }
+  return {
+    blocks,
+    legend: legendLines.length
+      ? `Group composites follow (one PNG each, semantic units):\n${legendLines.join("\n")}`
+      : "",
+  };
 }
 
 // ─── Semantic pass ──────────────────────────────────────────────────────────────
@@ -107,7 +139,28 @@ const RELAYOUT_SYSTEM = `You are an ad-layout designer translating a square key 
 
 You output STRUCTURED JSON, never raw CSS. The server applies it.
 
+═══════════════════════════════════════════════════════════════════════
+START FROM THE NAIVE BASELINE
+═══════════════════════════════════════════════════════════════════════
+A Naive baseline layout is provided (proportional rescale at target dims).
+It already preserves every layer at the right z-order, scaled to fit.
+
+YOUR JOB IS TO REFINE THE BASELINE — not start over.
+
+- If a group is fine at its baseline position, OMIT it from your output and the
+  server keeps the baseline transform. You don't need to repeat what works.
+- Only include groups in your "groups" array when you want to move them, hide
+  them, or override them.
+- The baseline's role is also a safety net: it guarantees nothing disappears.
+  Use it as your safety floor.
+
+When the aspect ratio differs strongly (e.g. 1:1 → 9:16), the baseline will
+be stretched and look wrong. THAT is when you intervene — rebalance the
+composition by repositioning groups, tightening spacing, hiding decoration.
+
+═══════════════════════════════════════════════════════════════════════
 Hard constraints (must respect):
+═══════════════════════════════════════════════════════════════════════
 - Only reference gids that exist in the input.
 - 'primary' groups must be fully inside the safe area.
 - 'structural' groups (typically background) must remain visible.
@@ -124,10 +177,7 @@ Soft guidance:
 - Reasoning: one sentence explaining your layout choice for this target.
 
 Output coordinates are in target-canvas pixels. The server will translate them to
-percentages of the canvas so the final HTML is responsive: it must look correct
-when the canvas is scaled up or down (within the same aspect ratio). Therefore,
-think relationally — anchor groups to canvas edges/centers, leave breathing room
-proportional to the canvas, and avoid placements that only work at one resolution.`;
+percentages of the canvas so the final HTML is responsive.`;
 
 const RELAYOUT_SCHEMA = {
   type: "object",
@@ -412,6 +462,10 @@ Keep the brand identity, color palette, and main subject. Re-flow composition fo
     const safePx = Math.max(8, Math.round(0.04 * Math.min(args.targetW, args.targetH)));
     const legibilityMin = Math.max(14, Math.round(0.04 * Math.min(args.targetW, args.targetH)));
 
+    const baselineJson = args.baselineLayout
+      ? JSON.stringify(args.baselineLayout.groups, null, 2)
+      : null;
+
     const userText =
 `Source canvas: ${args.psd.width}×${args.psd.height}
 Target canvas: ${args.targetW}×${args.targetH}
@@ -421,15 +475,24 @@ Legibility floor (height) for logo/headline/cta: ${legibilityMin}px
 Semantic group inventory (in source-canvas pixels):
 ${JSON.stringify(inventory, null, 2)}
 
-${args.nudge ? `Designer nudge: ${args.nudge}\n` : ""}${args.previousAttempt ? `Previous attempt scored ${args.previousAttempt.score}. mustFix=${JSON.stringify(args.previousAttempt.mustFix)} freeAdvice=${JSON.stringify(args.previousAttempt.freeAdvice)}\n` : ""}
+${baselineJson ? `═══ NAIVE BASELINE (proportional rescale at target dims) ═══
+This is the starting layout. Every group is positioned here. Your job:
+override only the groups that NEED to move for this target ratio.
+${baselineJson}
+
+` : ""}${args.nudge ? `Designer nudge: ${args.nudge}\n` : ""}${args.previousAttempt ? `Previous attempt scored ${args.previousAttempt.score}. mustFix=${JSON.stringify(args.previousAttempt.mustFix)} freeAdvice=${JSON.stringify(args.previousAttempt.freeAdvice)}\n` : ""}
 Image 1 is the source. ${refUrl ? "Image 2 is the aesthetic reference for the target ratio." : ""}
 Return JSON conforming to the schema. Coordinates in target-canvas pixels.`;
 
+    const groupImgs = await buildGroupImageBlocks(args.psd.hash, args.semantic.groups.map((g) => g.gid));
+    const finalUserText = groupImgs.legend ? `${userText}\n\n${groupImgs.legend}` : userText;
+
     const content: Array<Record<string, unknown>> = [
-      { type: "text", text: userText },
+      { type: "text", text: finalUserText },
       { type: "image_url", image_url: { url: sourceUrl } },
     ];
     if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
+    content.push(...groupImgs.blocks);
 
     const ctxPreamble = args.context ? renderContextPrompt(args.context, "resize") : "";
     const sysMsg = ctxPreamble ? `${RELAYOUT_SYSTEM}\n\n${ctxPreamble}` : RELAYOUT_SYSTEM;
@@ -468,15 +531,15 @@ Return JSON conforming to the schema. Coordinates in target-canvas pixels.`;
     }));
     const allowedLids = new Set(args.psd.layers.filter((l) => !l.hidden).map((l) => l.lid));
 
-    const system = `You are a senior front-end designer rewriting an ad layout for a new canvas size.
+    const system = `You are a senior front-end designer REFINING an ad layout for a new canvas size.
 
 You are given:
-- The current source HTML+CSS (for the source ratio)
+- A Naive baseline HTML+CSS — every layer is ALREADY POSITIONED at the target canvas size by proportional rescale. Nothing is missing, nothing is broken, the composition just needs taste.
 - A semantic inventory describing each group's role and importance
 - A target canvas size W×H
 - Optionally, an "imagined reference" image to anchor the aesthetic
 
-TASK: output a COMPLETE new HTML document (<!doctype html>...) that displays the layout beautifully at the target canvas size.
+TASK: output a COMPLETE new HTML document (<!doctype html>...) that improves the Naive baseline's composition for the target canvas size. KEEP what already works in the baseline — restructure only when the new ratio demands it. Never drop primary or structural groups.
 
 Hard rules:
 - Use ONLY the existing layer images. Every <img src> must match exactly: /api/asset/<hash>/l<N>.png — copy these from the source HTML.
@@ -516,11 +579,15 @@ ${args.sourceHtml}
 The first image is the flattened source. ${refUrl ? "The second image is the aesthetic reference for the target ratio." : ""}
 Return JSON with the full new HTML.`;
 
+    const groupImgs = await buildGroupImageBlocks(args.psd.hash, args.semantic.groups.map((g) => g.gid));
+    const finalUserText = groupImgs.legend ? `${userText}\n\n${groupImgs.legend}` : userText;
+
     const content: Array<Record<string, unknown>> = [
-      { type: "text", text: userText },
+      { type: "text", text: finalUserText },
       { type: "image_url", image_url: { url: sourceUrl } },
     ];
     if (refUrl) content.push({ type: "image_url", image_url: { url: refUrl } });
+    content.push(...groupImgs.blocks);
 
     const ctxPreamble = args.context ? renderContextPrompt(args.context, "resize") : "";
     const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
@@ -607,6 +674,9 @@ Return JSON with the full new HTML at native ${args.psd.width}×${args.psd.heigh
     const ctxPreamble = args.context ? renderContextPrompt(args.context, "sourceEngine") : "";
     const sysMsg = ctxPreamble ? `${system}\n\n${ctxPreamble}` : system;
 
+    const groupImgs = await buildGroupImageBlocks(args.psd.hash, args.semantic.groups.map((g) => g.gid));
+    const finalUserText = groupImgs.legend ? `${userText}\n\n${groupImgs.legend}` : userText;
+
     const res = await c.chat.completions.create({
       model: TEXT_MODEL,
       messages: [
@@ -614,8 +684,9 @@ Return JSON with the full new HTML at native ${args.psd.width}×${args.psd.heigh
         {
           role: "user",
           content: [
-            { type: "text", text: userText },
+            { type: "text", text: finalUserText },
             { type: "image_url", image_url: { url: sourceFlatUrl } },
+            ...groupImgs.blocks,
           ] as never,
         },
       ],

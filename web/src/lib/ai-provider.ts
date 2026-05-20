@@ -28,6 +28,8 @@ export interface GenerateSourceArgs {
   semantic: SemanticResult;
   algorithmHtml: string;
   context?: LayeredContext;
+  /** Per-group composite PNG paths, by gid. Passed as multimodal context. */
+  groupImagePaths?: Record<string, string>;
 }
 
 export interface RewriteHtmlArgs {
@@ -40,6 +42,8 @@ export interface RewriteHtmlArgs {
   nudge?: string;
   previousAttempt?: { score: number; mustFix: unknown[]; freeAdvice: string[] };
   context?: LayeredContext;
+  /** Per-group composite PNG paths, by gid. Passed as multimodal context. */
+  groupImagePaths?: Record<string, string>;
 }
 
 export interface HeuristicHints {
@@ -58,6 +62,15 @@ export interface ReLayoutArgs {
   nudge?: string;
   previousAttempt?: { score: number; mustFix: unknown[]; freeAdvice: string[] };
   context?: LayeredContext;
+  /**
+   * Optional Naive baseline (proportional rescale at target). When provided,
+   * the AI is instructed to REFINE this layout rather than design from scratch.
+   * This dramatically reduces variance and prevents the AI from dropping
+   * critical elements (the most common failure mode).
+   */
+  baselineLayout?: ReLayoutResult;
+  /** Per-group composite PNG paths, by gid. Passed as multimodal context. */
+  groupImagePaths?: Record<string, string>;
 }
 
 export interface VerifyArgs {
